@@ -101,3 +101,49 @@ python3 -m http.server 8000
 - `index.html#lv=2&x=221&y=10` — старт прямо у арены босса.
 - `window.__dbg()` в консоли — текущее состояние уровня, игрока, врагов и босса.
 - Чит-коды: набрать `BOSS` (на чекпоинт у арены) или `NEXT` (следующий сектор).
+
+## Деплой
+
+Продакшн: **https://orbitar.duckdns.org** — vps2, nginx, статика в `/var/www/orbitar`.
+
+### Первичная настройка сервера
+
+Один раз, от root:
+
+```
+scp deploy/provision.sh deploy/nginx-orbitar.conf root@vps2:/tmp/
+ssh root@vps2 'CI_DEPLOY_PUBKEY="ssh-ed25519 AAAA... github-actions-deploy@orbitar" bash /tmp/provision.sh'
+```
+
+Скрипт заводит системного пользователя `orbitar-deploy` (без sudo и пароля — умеет
+только принимать rsync в свой webroot), создаёт webroot, выпускает сертификат
+Let's Encrypt и включает vhost. Повторный запуск безопасен.
+
+Машина держит и другие сайты, поэтому скрипт ничего не переустанавливает и не
+трогает чужие конфиги. Схема сертификата — как у соседей: аутентификатор
+`webroot` через `/var/www/acme`, `installer` не используется, ssl-директивы
+написаны в vhost руками. Продлевает `certbot.timer`, nginx после продления
+перезагружает общий хук `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`.
+
+Сертификат выпускается **до** установки vhost: его 443-блок ссылается на файлы
+сертификата, и без них nginx не загрузится. http-01 challenge в этот момент
+отдаёт `acme-bootstrap` — он `default_server` и ловит ещё не настроенное имя.
+
+### Автодеплой
+
+`.github/workflows/deploy.yml` на каждый push в `main` синхронизирует репозиторий
+в webroot по rsync (`--delete`, так что удалённые из репозитория файлы исчезают и
+с сервера) и проверяет, что сайт отвечает 200.
+
+Секреты репозитория:
+
+| Секрет                | Значение                                                |
+|-----------------------|---------------------------------------------------------|
+| `DEPLOY_HOST`         | IP сервера                                              |
+| `DEPLOY_USER`         | `orbitar-deploy`                                        |
+| `DEPLOY_SSH_KEY`      | приватный ключ, публичный лежит в его `authorized_keys` |
+| `DEPLOY_KNOWN_HOSTS`  | вывод `ssh-keyscan <DEPLOY_HOST>`                       |
+
+Ключ CI — отдельный от административного: он пускает только под `orbitar-deploy`.
+
+Ручной прогон — вкладка Actions → Deploy → Run workflow.

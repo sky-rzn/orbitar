@@ -1,0 +1,53 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Параллельные деплои затирали бы друг друга — гоним по одному,
+# промежуточные пуши отменяем.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://orbitar.duckdns.org
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Настроить SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Выкатить статику
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          # --delete, чтобы удалённые из репозитория файлы исчезали и с сервера;
+          # --delete-excluded — чтобы туда же попадали исключённые ниже пути.
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            --exclude '.git*' --exclude 'deploy/' --exclude 'README.md' \
+            --exclude 'claude-container.sh' --exclude '.claude-container/' \
+            --delete-excluded \
+            ./ "$DEPLOY_USER@$HOST:/var/www/orbitar/"
+
+      - name: Проверить, что сайт отвечает
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 \
+                 https://orbitar.duckdns.org/)
+          echo "GET / → $code"
+          [ "$code" = "200" ]
+          curl -sS https://orbitar.duckdns.org/js/game.js -o /dev/null
