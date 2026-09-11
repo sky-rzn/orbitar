@@ -5,11 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Параллельные деплои затирали бы друг друга — гоним по одному,
-# промежуточные пуши отменяем.
+# Параллельные деплои затирали бы друг друга — гоним по одному.
+# Не отменяем: отмена посреди rsync оставила бы webroot в полусинхронизированном
+# состоянии. Лишний прогон дешевле битого сайта.
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
