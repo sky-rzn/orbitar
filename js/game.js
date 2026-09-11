@@ -95,6 +95,7 @@ const isOneWay = (x, y) => ch(x, y) === '-';
 
 const PHYS = { accel: 0.22, maxSpeed: 1.7, friction: 0.28, airAccel: 0.16, gravity: 0.24, maxFall: 5.2, jump: -5.3, jumpCut: -1.8, spring: -7.6, coyote: 6, buffer: 6 };
 const CRUMBLE = { hold: 42, gone: 150 };     // кадров под ногами / до восстановления
+const SEEK_CALM = 60;                        // после возрождения искатель секунду висит дома
 const GATE = { period: 170, warn: 90, on: 110 }; // цикл затвора: выкл → предупреждение → луч
 // Фазовые плиты: группы гаснут по очереди, между ними есть окно `both`,
 // когда тверды обе — в него и надо успеть перескочить.
@@ -206,7 +207,7 @@ function loadLevel(idx) {
       case 'j': ents.leapers.push({ x: px, y: py + 2, hx: px, hy: py + 2, vx: 0, vy: 0, dir: -1,
                                     st: 0, t: 50 + (x * 17) % 60, alive: true, home: true }); break;
       case 'k': ents.seekers.push({ x: px + 2, y: py + 2, hx: px + 2, hy: py + 2, vx: 0, vy: 0,
-                                    alive: true, t: (x * 23) % 60, home: true }); break;
+                                    alive: true, t: (x * 23) % 60, calm: 0, home: true }); break;
     }
   }
   for (const col of LV.checkpoints) {
@@ -267,7 +268,9 @@ function reset(full) {
     l.alive = true; l.st = 0; l.t = 50; l.vx = 0; l.vy = 0; l.x = l.hx; l.y = l.hy;
   }
   ents.seekers = ents.seekers.filter(k => k.home);
-  for (const k of ents.seekers) { k.alive = true; k.vx = 0; k.vy = 0; k.x = k.hx; k.y = k.hy; }
+  for (const k of ents.seekers) {               // искатель возвращается домой и даёт осмотреться
+    k.alive = true; k.vx = 0; k.vy = 0; k.x = k.hx; k.y = k.hy; k.calm = SEEK_CALM;
+  }
   for (const p of ents.presses) { p.st = 0; p.t = p.wait; p.y = p.y0; p.vy = 0; }
   for (const q of ents.saws) {                   // пила неуязвима — даём на реакцию всю рельсу
     const far = Math.abs(q.minX - sp.x) >= Math.abs(q.maxX - sp.x) ? q.minX : q.maxX;
@@ -659,7 +662,8 @@ function updateSeekers() {
   for (const k of ents.seekers) {
     if (!k.alive) continue;
     k.t++;
-    const near = onScreen(k.x);
+    if (k.calm > 0) k.calm--;                    // пока не остыл — тянется к дому, а не к игроку
+    const near = k.calm === 0 && onScreen(k.x);
     const tx = near ? P.x + P.w / 2 - 6 : k.hx, ty = near ? P.y + P.h / 2 - 6 : k.hy;
     k.vx = clamp(k.vx + Math.sign(tx - k.x) * 0.035, -0.85, 0.85);
     k.vy = clamp(k.vy + Math.sign(ty - k.y) * 0.035, -0.85, 0.85);
