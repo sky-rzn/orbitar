@@ -49,8 +49,8 @@ const L1_B = [
 ];
 
 const LEVEL1 = {
-  name: 'SECTOR 7 - ORBITAL FOUNDRY',
-  short: 'SECTOR 7',
+  name: 'ORBITAL FOUNDRY',
+  short: 'ORBITAL FOUNDRY',
   theme: 0,
   accent: '#ff3fa8',
   accent2: '#22e5ff',

@@ -1,5 +1,5 @@
 // ============================================================
-//  ORBITAR — игровой движок (два сектора)
+//  ORBITAR — игровой движок (два уровня)
 // ============================================================
 'use strict';
 (() => {
@@ -25,7 +25,7 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
-// чит-коды: LVL1/LVL2 — в начало сектора, BOSS1/BOSS2 — к его боссу, NEXT — сразу в следующий сектор
+// чит-коды: LVL1/LVL2 — в начало уровня, BOSS1/BOSS2 — к его боссу, NEXT — сразу на следующий уровень
 const CHEATS = {
   LVL1: { lv: 0 }, LVL2: { lv: 1 },
   BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true },
@@ -225,8 +225,8 @@ function nextLevel() {
   startLevel(levelIdx + 1);
 }
 function cheatWarp(lv, toBoss) {
-  if (lv !== levelIdx || !toBoss) {                  // прыжок в другой сектор (и любой LVL) — сектор с нуля
-    if (lv === 0) { cellsBank = 0; runTime = 0; }    // с первого сектора забег начинается заново
+  if (lv !== levelIdx || !toBoss) {                  // прыжок на другой уровень (и любой LVL) — уровень с нуля
+    if (lv === 0) { cellsBank = 0; runTime = 0; }    // с первого уровня забег начинается заново
     startLevel(lv);
   }
   if (toBoss) { cp = checkpoints.length - 1; reset(false); }
@@ -236,7 +236,7 @@ function cheatWarp(lv, toBoss) {
 }
 
 startLevel(0);
-// отладка: #lv=2&x=25&y=10 — сектор и тайл старта (для скриншотов уровня)
+// отладка: #lv=2&x=25&y=10 — уровень и тайл старта (для скриншотов уровня)
 {
   const lv = /lv=(\d+)/.exec(location.hash);
   if (lv && +lv[1] >= 1 && +lv[1] <= LEVELS.length) startLevel(+lv[1] - 1);
@@ -541,7 +541,7 @@ function updateBoss() {
   waves = waves.filter(w => w.x > ARENA.left + 18 && w.x < (LW - 6) * T - 4);
 }
 
-// ---------- босс 1: WARDEN (сектор 7) ----------
+// ---------- босс 1: WARDEN (ORBITAL FOUNDRY) ----------
 function fireBolt() {
   const b = boss, sx = b.x + 16, sy = b.y + 18;
   const dx = P.x + P.w / 2 - sx, dy = P.y + P.h / 2 - sy, len = Math.hypot(dx, dy) || 1;
@@ -602,7 +602,7 @@ function updateWarden() {
   }
 }
 
-// ---------- босс 2: ROOTMIND (сектор 12) ----------
+// ---------- босс 2: ROOTMIND (VERDANT REACTOR) ----------
 //  ходит по полу и плюётся спорами веером; телеграф → рывок через всю арену;
 //  удар о стену раскрывает броню — ядро можно топтать. С третьего деления
 //  сыплет расплавом с потолка и выпускает ползунов.
@@ -946,7 +946,7 @@ function drawHud() {
   }
   if (state === 'clear') {
     ctx.fillStyle = 'rgba(11,11,26,0.78)'; ctx.fillRect(0, 76, W, 72);
-    textShadow('SECTOR CLEAR!', mid('SECTOR CLEAR!', 2), 84, '#ffe14a', 2);
+    textShadow('LEVEL CLEAR!', mid('LEVEL CLEAR!', 2), 84, '#ffe14a', 2);
     const line = `CELLS ${got}/${totalCells}   TIME ${clock(secs)}`;
     textShadow(line, mid(line), 106, '#e6ecff');
     const nx = `NEXT - ${LEVELS[levelIdx + 1].name}`;
