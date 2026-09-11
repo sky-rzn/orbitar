@@ -1,6 +1,7 @@
 // ============================================================
-//  ORBITAR — звук: PSG-блипы, FM-удары и трекерная музыка
-//  (SN76489 + YM2612 + эхо SPC700 — всё синтезируется на лету)
+//  ORBITAR — звук: PSG-блипы и FM-удары для эффектов,
+//  хард-роковая группа (перегруженные гитары, бас, живая установка) для музыки.
+//  Ничего не грузится — всё синтезируется на лету.
 // ============================================================
 'use strict';
 
@@ -8,6 +9,7 @@ const SFX = (() => {
 
 // ---------- узлы ----------
 let ctx = null, comp, master, sfxBus, musBus, echoIn, panOK = false;
+let gtrAmp, bassAmp, leadAmp, musEcho;   // тракт музыкальной группы
 let on = true, musicOn = true;
 let voices = 0;                          // грубый счётчик голосов эффектов: страховка от каши
 const MAX_VOICES = 32;
@@ -17,7 +19,7 @@ const waves = {};                        // PeriodicWave по скважност
 const noiseBufs = {};
 const lastAt = {};                       // троттлинг одинаковых звуков
 
-const VOL = { master: 0.5, sfx: 0.9, music: 0.34 };
+const VOL = { master: 0.5, sfx: 0.9, music: 0.38 };
 
 function pulseWave(duty) {
   const n = 20, real = new Float32Array(n), imag = new Float32Array(n);
@@ -58,6 +60,20 @@ function ensure() {
   const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 2600;
   echoIn = ctx.createGain(); echoIn.gain.value = 0.5;
   echoIn.connect(dl); dl.connect(tone); tone.connect(fb); fb.connect(dl); dl.connect(comp);
+
+  // эхо музыки идёт в свой посыл: при выключенной музыке не остаётся хвостов
+  const mdl = ctx.createDelay(0.9); mdl.delayTime.value = 0.2;
+  const mfb = ctx.createGain(); mfb.gain.value = 0.3;
+  const mtone = ctx.createBiquadFilter(); mtone.type = 'lowpass'; mtone.frequency.value = 2400;
+  musEcho = ctx.createGain(); musEcho.gain.value = 0.3;
+  musEcho.connect(mdl); mdl.connect(mtone); mtone.connect(mfb); mfb.connect(mdl); mdl.connect(musBus);
+  musEcho.delay = mdl;
+
+  // усилители группы: ритм-гитара, соло-гитара и бас
+  gtrAmp  = amp({ pre: 1.35, drive: 6.5, hp: 110, mid: 2200, midDb: 4,  lp: 4200, out: 0.11 });
+  leadAmp = amp({ pre: 1.2,  drive: 11, asym: 0.12, hp: 220, mid: 1500, midDb: 6, lp: 5200, out: 0.065 });
+  bassAmp = amp({ pre: 1.25, drive: 3,  hp: 38,  mid: 800,  midDb: 3,  lp: 2600, out: 0.13 });
+  leadAmp.out.connect(musEcho);
 
   waves.p12 = pulseWave(0.125); waves.p25 = pulseWave(0.25); waves.p50 = pulseWave(0.5);
   noiseBufs.white = makeNoise('white');
@@ -379,143 +395,284 @@ function loop(name, want, o) {
 }
 function stopLoops() { for (const k in active) loop(k, false); }
 
-// ---------- музыка: мини-трекер ----------
+// ---------- гитарный тракт: перегруз + «кабинет» ----------
+// Кривая мягкого клиппинга: tanh — овердрайв лампы, asym добавляет чётных гармоник.
+function shaperCurve(drive, asym) {
+  const n = 2048, c = new Float32Array(n), ws = ctx.createWaveShaper();
+  const bias = asym || 0, ref = Math.tanh(drive + bias) - Math.tanh(bias);
+  for (let i = 0; i < n; i++) {
+    const x = i * 2 / n - 1;
+    c[i] = (Math.tanh(x * drive + bias) - Math.tanh(bias)) / ref;
+  }
+  ws.curve = c; ws.oversample = '4x';
+  return ws;
+}
+// Голова + кабинет: пре-гейн → срез низа → клиппинг → серединный горб → два ФНЧ.
+// ВАЖНО: WaveShaper зажимает вход в [-1,1], поэтому pre держим так,
+// чтобы пик ноты подходил к 1, а характер перегруза задавал drive.
+function amp(o) {
+  const inp = ctx.createGain(); inp.gain.value = o.pre;
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = o.hp; hp.Q.value = 0.7;
+  const ws = shaperCurve(o.drive, o.asym);
+  const mid = ctx.createBiquadFilter(); mid.type = 'peaking';
+  mid.frequency.value = o.mid; mid.Q.value = 1.1; mid.gain.value = o.midDb;
+  const lp1 = ctx.createBiquadFilter(); lp1.type = 'lowpass'; lp1.frequency.value = o.lp; lp1.Q.value = 1.1;
+  const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = o.lp * 1.5; lp2.Q.value = 0.6;
+  const out = ctx.createGain(); out.gain.value = o.out;
+  inp.connect(hp); hp.connect(ws); ws.connect(mid); mid.connect(lp1); lp1.connect(lp2); lp2.connect(out);
+  out.connect(musBus);
+  return { in: inp, out };
+}
+
+// ---------- голоса группы ----------
+// Ритм-гитара: квинт-аккорд (тоника + квинта + октава) расстроенными пилами.
+// Одношаговые ноты играются глушением ладонью — тот самый «чаг».
+function gtrNote(o) {
+  const t = o.t0, dur = o.dur, v = o.vol;
+  const g = ctx.createGain();
+  let node = g;
+  if (o.mute) {                                  // palm mute: завал верха по ходу ноты
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.9;
+    lp.frequency.setValueAtTime(2800, t);
+    lp.frequency.exponentialRampToValueAtTime(800, t + dur);
+    g.connect(lp); node = lp;
+  }
+  node.connect(o.amp.in);
+
+  const parts = o.chord ? [[1, -8], [1, 8], [1.49831, 5], [2, -5]] : [[1, -7], [1, 7]];
+  const lvl = v / parts.length;                  // сумма голосов ≈ v, чтобы не зажать шейпер
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(lvl, t + 0.003);
+  if (o.mute) {
+    g.gain.exponentialRampToValueAtTime(lvl * 0.22, t + dur * 0.45);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  } else {
+    g.gain.linearRampToValueAtTime(lvl * 0.8, t + Math.max(0.02, dur - 0.05));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  }
+  for (const [mul, det] of parts) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = o.f * mul;
+    osc.detune.value = det;
+    osc.connect(g);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  }
+  pick(t, o.amp.in, (o.mute ? 0.5 : 0.85) * v);
+}
+// щелчок медиатора — короткий шумовой транзиент в тот же вход усилителя
+function pick(t, dest, v) {
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBufs.metal; src.loop = true;
+  src.playbackRate.value = 0.8 + Math.random() * 0.5;
+  const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1800;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(v * 0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.016);
+  src.connect(f); f.connect(g); g.connect(dest);
+  src.start(t); src.stop(t + 0.05);
+}
+// Соло: одна пила с задержанным вибрато — «поёт» на длинных нотах.
+function leadNote(o) {
+  const t = o.t0, dur = o.dur, v = o.vol;
+  const g = ctx.createGain();
+  g.connect(leadAmp.in);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(v * 0.5, t + 0.006);
+  g.gain.linearRampToValueAtTime(v * 0.42, t + Math.max(0.03, dur - 0.06));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  for (const det of [-7, 7]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = o.f; osc.detune.value = det;
+    if (o.vib) {                                 // вибрато включается не сразу, как у живого гитариста
+      const lfo = ctx.createOscillator(), la = ctx.createGain();
+      lfo.frequency.value = 5.6; la.gain.value = 0.0001;
+      la.gain.setValueAtTime(0.0001, t + dur * 0.25);
+      la.gain.linearRampToValueAtTime(16, t + Math.min(dur * 0.7, dur * 0.25 + 0.18));
+      lfo.connect(la); la.connect(osc.detune);
+      lfo.start(t); lfo.stop(t + dur + 0.02);
+    }
+    osc.connect(g);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  }
+  pick(t, leadAmp.in, v * 0.4);
+}
+// Бас: пила с лёгким овердрайвом плюс чистый саб-синус ниже перегруза.
+function bassNote(o) {
+  const t = o.t0, dur = o.dur, v = o.vol;
+  const mk = (type, f, lvl, dest) => {
+    const osc = ctx.createOscillator(); osc.type = type; osc.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(lvl, t + 0.004);
+    g.gain.linearRampToValueAtTime(lvl * 0.8, t + Math.max(0.02, dur - 0.04));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(dest);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  };
+  mk('sawtooth', o.f, v * 0.62, bassAmp.in);
+  mk('sine', o.f, v * 0.13, musBus);             // саб мимо перегруза — низ остаётся чистым
+}
+
+// ---------- музыка: мини-трекер в стиле хард-рока ----------
 //  Нотация: один токен = 1/16. 'a4' — нота, '-' — держать, '.' — пауза.
-//  Ударные: k — бочка, s — малый, h — хэт, H — открытый, c — крэш.
+//  Гитара: нота длиной в один шаг звучит глушением (чаг), длинная — открытым аккордом.
+//  Ударные: k — бочка, s — малый, h — хэт, H — открытый, c — крэш, r — райд,
+//  t/T — низкий/высокий том. Несколько символов в токене бьют одновременно: 'kc', 'sc'.
 const TRACKS = {
-  foundry: {                                     // ORBITAL FOUNDRY — холодный драйв, Am
-    bpm: 152,
-    bass: { wave: 'p50', vol: 0.3, pat: [
-      'a2 . a2 . a2 . a2 . a2 . a2 . a2 . a3 .',
-      'a2 . a2 . a2 . a2 . a2 . a2 . e3 . e2 .',
-      'f2 . f2 . f2 . f2 . f2 . f2 . f2 . f3 .',
-      'g2 . g2 . g2 . g2 . g2 . g2 . g3 . b2 .'] },
-    arp: { wave: 'p12', vol: 0.1, echo: true, pat: [
-      'a4 c5 e5 c5 a4 c5 e5 c5 a4 c5 e5 c5 a4 c5 e5 c5',
-      'a4 c5 e5 c5 a4 c5 e5 c5 a4 c5 e5 c5 b4 d5 g5 d5',
-      'f4 a4 c5 a4 f4 a4 c5 a4 f4 a4 c5 a4 f4 a4 c5 a4',
-      'g4 b4 d5 b4 g4 b4 d5 b4 g4 b4 d5 b4 g4 b4 d5 f5'] },
-    lead: { wave: 'p25', vol: 0.19, echo: true, pat: [
-      '. . . . e5 - . g5 a5 - - - . . . .',
-      'c6 - - . b5 - a5 - e5 - - - . . . .',
-      'f5 - - . a5 - - . g5 - - - . . . .',
-      'e5 - d5 - c5 - b4 - a4 - - - - . . .'] },
-    drum: { vol: 0.5, pat: [
-      'k . . . h . s . k . . k h . s .',
-      'k . . . h . s . k . . k h . s h',
-      'k . . . h . s . k . . k h . s .',
-      'k . . k h . s . k . k . s . s s'] },
+  foundry: {                                     // ORBITAL FOUNDRY — маршевый риф в Am
+    bpm: 158,
+    gtr: { vol: 0.62, pat: [
+      'a2 . a2 a2 . a2 . a2 a2 . a2 a2 . c3 . d3',
+      'a2 . a2 a2 . a2 . a2 a2 . c3 . d3 . e3 .',
+      'f2 - - . f2 . f2 . g2 - - . g2 . g2 .',
+      'f2 - - . g2 - - . a2 - - - a2 . g2 f2'] },
+    bass: { vol: 0.66, pat: [
+      'a1 . a1 a1 . a1 . a1 a1 . a1 a1 . c2 . d2',
+      'a1 . a1 a1 . a1 . a1 a1 . c2 . d2 . e2 .',
+      'f1 . f2 . f1 . f1 . g1 . g2 . g1 . g1 .',
+      'f1 . f2 . g1 . g2 . a1 . a2 . a1 . g1 f1'] },
+    lead: { vol: 0.5, pat: [
+      '. . . . . . . . . . . . . . . .',
+      '. . . . . . . . e5 - g5 - a5 - - -',
+      'c6 - - - b5 - a5 - g5 - - - e5 - - -',
+      'd5 - e5 - g5 - a5 - c6 - - - - - - .'] },
+    drum: { vol: 0.52, pat: [
+      'kc . h . s . h k . . h k s . h .',
+      'k . h . s . h k . . h k s . h H',
+      'kc . h . s . h k . . h k s . h .',
+      'k . h . s . h . t . t T . s s s'] },
   },
-  reactor: {                                     // VERDANT REACTOR — упругий дориец, Dm
-    bpm: 144,
-    bass: { wave: 'p50', vol: 0.3, pat: [
-      'd2 . d2 - . d2 . . d3 . d2 . a2 . a2 .',
-      'f2 . f2 - . f2 . . f3 . f2 . c3 . c3 .',
-      'g2 . g2 - . g2 . . g3 . g2 . d3 . d3 .',
-      'd2 . d2 - . d2 . . d3 . a2 . d3 . e3 .'] },
-    arp: { wave: 'p12', vol: 0.1, echo: true, pat: [
-      'd4 f4 a4 f4 d4 f4 a4 f4 d4 f4 a4 f4 d4 f4 a4 c5',
-      'f4 a4 c5 a4 f4 a4 c5 a4 f4 a4 c5 a4 f4 a4 c5 e5',
-      'g4 b4 d5 b4 g4 b4 d5 b4 g4 b4 d5 b4 g4 b4 d5 f5',
-      'd4 f4 a4 f4 d4 f4 a4 f4 a4 c5 e5 c5 a4 c5 e5 g5'] },
-    lead: { wave: 'p25', vol: 0.19, echo: true, pat: [
-      'd5 - . f5 - . a5 - - - . g5 - . . .',
-      'f5 - - . e5 - d5 - c5 - - - . . . .',
-      'g5 - . b5 - . a5 - - - . f5 - . . .',
-      'd5 - e5 - f5 - e5 - d5 - - - - . . .'] },
-    drum: { vol: 0.5, pat: [
-      'k . h . s . h k . . k . s . h .',
-      'k . h . s . h k . . k . s . h H',
-      'k . h . s . h k . . k . s . h .',
-      'k . h k s . h . k . s . s s H .'] },
-  },
-  citadel: {                                     // ASHEN CITADEL — тяжёлый фригийский, Em
-    bpm: 132,
-    bass: { wave: 'p50', vol: 0.32, pat: [
-      'e2 - . e2 . . e2 . e2 - . e3 . . b2 .',
-      'f2 - . f2 . . f2 . f2 - . f3 . . c3 .',
-      'g2 - . g2 . . g2 . g2 - . g3 . . d3 .',
-      'f2 - . f2 . . f2 . f2 - . c3 . . b2 .'] },
-    arp: { wave: 'p12', vol: 0.09, echo: true, pat: [
-      'e4 b4 e5 b4 e4 b4 e5 b4 e4 b4 e5 b4 e4 b4 e5 b4',
-      'f4 c5 f5 c5 f4 c5 f5 c5 f4 c5 f5 c5 f4 c5 f5 c5',
-      'g4 d5 g5 d5 g4 d5 g5 d5 g4 d5 g5 d5 g4 d5 g5 d5',
-      'f4 c5 f5 c5 f4 c5 f5 c5 f4 c5 f5 c5 e4 b4 e5 g5'] },
-    lead: { wave: 'p25', vol: 0.18, echo: true, pat: [
-      'b4 - - . e5 - - . g5 - f5 - e5 - - -',
-      'f5 - - - c5 - - . a4 - - - . . . .',
-      'g5 - - . b5 - a5 - g5 - - - . . . .',
-      'f5 - e5 - d5 - c5 - b4 - - - - . . .'] },
-    drum: { vol: 0.55, pat: [
-      'k . . . . . h . s . . . k . h .',
-      'k . . . . . h . s . . k . . h H',
-      'k . . . . . h . s . . . k . h .',
-      'k . . k . . h . s . k . s . s s'] },
-  },
-  boss: {                                        // общая тема боссов — злой хроматизм
+  reactor: {                                     // VERDANT REACTOR — упругий грув в Dm
     bpm: 168,
-    bass: { wave: 'p50', vol: 0.33, pat: [
-      'd2 d2 d2 d2 d2 d2 d2 d2 d2 d2 d2 d2 d3 d3 c3 c3',
-      'c2 c2 c2 c2 c2 c2 c2 c2 c2 c2 c2 c2 c3 c3 b2 b2',
-      'd2 d2 d2 d2 d2 d2 d2 d2 d2 d2 d2 d2 d3 d3 e3 e3',
-      'eb2 eb2 eb2 eb2 eb2 eb2 eb2 eb2 e2 e2 e2 e2 f2 f2 f#2 f#2'] },
-    arp: { wave: 'p12', vol: 0.1, echo: true, pat: [
-      'd4 a4 d5 a4 f4 a4 d5 a4 d4 a4 d5 a4 f4 a4 d5 f5',
-      'c4 g4 c5 g4 eb4 g4 c5 g4 c4 g4 c5 g4 eb4 g4 c5 eb5',
-      'd4 a4 d5 a4 f4 a4 d5 a4 d4 a4 d5 a4 f4 a4 d5 f5',
-      'eb4 bb4 eb5 bb4 e4 b4 e5 b4 f4 c5 f5 c5 f#4 c#5 f#5 c#5'] },
-    lead: { wave: 'p25', vol: 0.2, echo: true, pat: [
-      'a5 - . a5 - . f5 - . . a5 - . c6 - .',
-      'g5 - . g5 - . eb5 - . . g5 - . bb5 - .',
-      'a5 - . a5 - . f5 - . . d6 - c6 - a5 -',
-      'f5 - e5 - eb5 - d5 - c#5 - - - d5 - - -'] },
-    drum: { vol: 0.6, pat: [
-      'k . h . s . h . k . h k s . h .',
-      'k . h . s . h . k . h k s . h H',
-      'k . h . s . h . k . h k s . h .',
-      'k . h k s . h . k k s . s s H .'] },
+    gtr: { vol: 0.6, pat: [
+      'd2 d2 . d2 . d2 d2 . d2 . f2 . g2 . a2 .',
+      'd2 d2 . d2 . d2 d2 . d2 . c3 . a2 . g2 f2',
+      'bb2 - - . bb2 . c3 - - . c3 . d3 - - .',
+      'a2 - - . g2 - - . f2 . f2 . e2 . e2 .'] },
+    bass: { vol: 0.66, pat: [
+      'd1 d1 . d1 . d1 d1 . d1 . f1 . g1 . a1 .',
+      'd1 d1 . d1 . d1 d1 . d1 . c2 . a1 . g1 f1',
+      'bb1 . bb2 . bb1 . c2 . c2 . c3 . d2 . d2 .',
+      'a1 . a2 . g1 . g2 . f1 . f2 . e1 . e2 .'] },
+    lead: { vol: 0.5, pat: [
+      '. . . . . . . . . . . . . . . .',
+      'd5 - f5 - a5 - - - g5 - f5 - d5 - - .',
+      'f5 - - . g5 - a5 - c6 - - - a5 - - -',
+      'a5 - g5 - f5 - e5 - d5 - - - - - - .'] },
+    drum: { vol: 0.52, pat: [
+      'kc . h k s . h . k . h k s . h .',
+      'k . h k s . h . k . h k s . h H',
+      'kc . h . s . h k . . h . s . h .',
+      'k . h . s . h . k . t T s . s s'] },
+  },
+  citadel: {                                     // ASHEN CITADEL — тяжёлый полутемп в Em
+    bpm: 140,
+    gtr: { vol: 0.64, pat: [
+      'e2 - - . e2 . e2 . f2 - - . e2 . . .',
+      'e2 - - . e2 . e2 . g2 - . f2 - . e2 .',
+      'c3 - - . c3 . b2 - - . b2 . a2 - - .',
+      'g2 - - . f2 - - . e2 - - - e2 . f2 g2'] },
+    bass: { vol: 0.68, pat: [
+      'e1 . e1 . e1 . e1 e1 f1 . f1 . e1 . e1 .',
+      'e1 . e1 . e1 . e1 e1 g1 . g1 . f1 . e1 .',
+      'c2 . c2 . c2 . b1 . b1 . b1 . a1 . a1 .',
+      'g1 . g1 . f1 . f1 . e1 . e2 . e1 . f1 g1'] },
+    lead: { vol: 0.48, pat: [
+      '. . . . . . . . . . . . . . . .',
+      'b4 - - - e5 - - - g5 - f5 - e5 - - -',
+      'c6 - - - b5 - - - a5 - g5 - f5 - - -',
+      'g5 - f5 - e5 - d5 - e5 - - - - - - .'] },
+    drum: { vol: 0.56, pat: [
+      'kc . . . h . s . k . . k h . s .',
+      'k . . . h . s . k . . k h . s H',
+      'kc . . . h . s . k . . k h . s .',
+      'k . . k h . s . t . T . s . s s'] },
+  },
+  boss: {                                        // тема боссов — галоп и хроматика
+    bpm: 176,
+    gtr: { vol: 0.62, pat: [
+      'd2 d2 d2 . d2 d2 d2 . d2 d2 d2 . eb2 . e2 .',
+      'd2 d2 d2 . d2 d2 d2 . d2 d2 d2 . c3 . bb2 .',
+      'd2 d2 d2 . d2 d2 d2 . f2 . g2 . ab2 . a2 .',
+      'bb2 - . bb2 . a2 - . ab2 - . g2 . f#2 . f2'] },
+    bass: { vol: 0.66, pat: [
+      'd1 d1 d1 . d1 d1 d1 . d1 d1 d1 . eb1 . e1 .',
+      'd1 d1 d1 . d1 d1 d1 . d1 d1 d1 . c2 . bb1 .',
+      'd1 d1 d1 . d1 d1 d1 . f1 . g1 . ab1 . a1 .',
+      'bb1 . bb2 . a1 . a2 . ab1 . g1 . f#1 . f1 .'] },
+    lead: { vol: 0.52, pat: [
+      'a5 - . a5 . f5 - . a5 . d6 - c6 - a5 -',
+      'g5 - . g5 . eb5 - . g5 . c6 - bb5 - g5 -',
+      'a5 - . c6 . d6 - . f6 - e6 - d6 - c6 -',
+      'd6 - c6 - bb5 - a5 - ab5 - g5 - f5 - d5 -'] },
+    drum: { vol: 0.56, pat: [
+      'kc k h k s k h k k k h k s k h k',
+      'k k h k s k h k k k h k s k h H',
+      'kc k h k s k h k k k h k s k h k',
+      'k k h k s k h k t t T T s s s s'] },
   },
 };
+const MUS_CH = ['gtr', 'bass', 'lead'];
 for (const k in TRACKS) {                        // разбор паттернов один раз
   const tr = TRACKS[k];
-  for (const ch of ['bass', 'arp', 'lead', 'drum'])
+  for (const ch of [...MUS_CH, 'drum'])
     if (tr[ch]) tr[ch].steps = tr[ch].pat.join(' ').trim().split(/\s+/);
   tr.stepDur = 60 / tr.bpm / 4;
 }
 
 const mus = { name: null, def: null, step: 0, next: 0, pending: null, fadeAt: 0 };
 
+// рок-установка: бочка с телом, малый с «треском», тарелки и томы
 function drumHit(kind, t, v) {
   if (kind === 'k') {
-    blip({ t0: t, wave: 'sine', f: 160, f2: 44, gl: 0.5, dur: 0.16, vol: 0.5 * v, bus: musBus });
-    noise({ t0: t, kind: 'lfsr', filter: 'lowpass', f: 1600, f2: 400, dur: 0.03, vol: 0.2 * v, bus: musBus });
+    blip({ t0: t, wave: 'sine', f: 155, f2: 42, gl: 0.35, dur: 0.26, vol: 0.62 * v, a: 0.002, bus: musBus });
+    blip({ t0: t, wave: 'triangle', f: 320, f2: 70, gl: 0.12, dur: 0.055, vol: 0.22 * v, bus: musBus });
+    noise({ t0: t, kind: 'white', filter: 'highpass', f: 3200, dur: 0.018, vol: 0.16 * v, bus: musBus });
   } else if (kind === 's') {
-    noise({ t0: t, kind: 'white', filter: 'bandpass', f: 1900, q: 0.9, dur: 0.13, vol: 0.32 * v, bus: musBus });
-    blip({ t0: t, wave: 'triangle', f: 230, f2: 160, dur: 0.08, vol: 0.16 * v, bus: musBus });
-  } else if (kind === 'h' || kind === 'H') {
-    noise({ t0: t, kind: 'metal', filter: 'highpass', f: 7200, dur: kind === 'H' ? 0.11 : 0.032,
-            vol: (kind === 'H' ? 0.12 : 0.1) * v, bus: musBus });
+    noise({ t0: t, kind: 'white', filter: 'bandpass', f: 1700, q: 0.7, dur: 0.17, vol: 0.4 * v, bus: musBus });
+    noise({ t0: t, kind: 'white', filter: 'highpass', f: 4200, dur: 0.055, vol: 0.2 * v, bus: musBus });
+    blip({ t0: t, wave: 'triangle', f: 255, f2: 170, dur: 0.1, vol: 0.18 * v, bus: musBus });
+    blip({ t0: t, wave: 'triangle', f: 180, f2: 125, dur: 0.13, vol: 0.12 * v, bus: musBus });
+  } else if (kind === 'h') {
+    noise({ t0: t, kind: 'metal', filter: 'highpass', f: 7800, dur: 0.035, vol: 0.12 * v, bus: musBus });
+  } else if (kind === 'H') {
+    noise({ t0: t, kind: 'metal', filter: 'highpass', f: 6800, dur: 0.2, vol: 0.13 * v, bus: musBus });
   } else if (kind === 'c') {
-    noise({ t0: t, kind: 'metal', filter: 'highpass', f: 5200, dur: 0.6, vol: 0.14 * v, bus: musBus });
+    noise({ t0: t, kind: 'metal', filter: 'highpass', f: 4200, dur: 1.3, vol: 0.19 * v, bus: musBus });
+    noise({ t0: t, kind: 'white', filter: 'highpass', f: 8200, dur: 0.85, vol: 0.08 * v, bus: musBus });
+  } else if (kind === 'r') {
+    noise({ t0: t, kind: 'metal', filter: 'bandpass', f: 5200, q: 2.5, dur: 0.3, vol: 0.11 * v, bus: musBus });
+  } else if (kind === 't' || kind === 'T') {
+    const f = kind === 't' ? 150 : 235;
+    blip({ t0: t, wave: 'sine', f, f2: f * 0.6, gl: 0.7, dur: 0.28, vol: 0.4 * v, bus: musBus });
+    noise({ t0: t, kind: 'white', filter: 'bandpass', f: f * 3, q: 1.2, dur: 0.09, vol: 0.11 * v, bus: musBus });
   }
 }
 
 function musicStep(t, i) {
   const tr = mus.def;
-  for (const name of ['bass', 'arp', 'lead']) {
+  for (const name of MUS_CH) {
     const c = tr[name];
     if (!c) continue;
     const tok = c.steps[i % c.steps.length];
     if (!tok || tok === '.' || tok === '-') continue;
     let len = 1;
-    while (len < 24 && c.steps[(i + len) % c.steps.length] === '-') len++;
-    blip({ t0: t, wave: c.wave, f: nf(tok), dur: len * tr.stepDur * 0.92, vol: c.vol,
-           a: 0.008, sus: len > 1, rel: 0.05, echo: c.echo, bus: musBus });
+    while (len < 32 && c.steps[(i + len) % c.steps.length] === '-') len++;
+    const dur = len * tr.stepDur, f = nf(tok);
+    if (name === 'gtr')
+      gtrNote({ t0: t, f, dur: dur * (len === 1 ? 0.85 : 0.97), vol: c.vol, chord: true, mute: len === 1, amp: gtrAmp });
+    else if (name === 'bass')
+      bassNote({ t0: t, f, dur: dur * (len === 1 ? 0.9 : 0.96), vol: c.vol });
+    else
+      leadNote({ t0: t, f, dur: dur * 0.98, vol: c.vol, vib: len > 2 });
   }
   const d = tr.drum;
   if (d) {
     const tok = d.steps[i % d.steps.length];
-    if (tok && tok !== '.' && tok !== '-') drumHit(tok, t, d.vol);
+    if (tok && tok !== '.' && tok !== '-')
+      for (const ch of tok) drumHit(ch, t, d.vol);
   }
 }
 
@@ -528,6 +685,8 @@ function music(name, delay) {
   mus.def = name ? TRACKS[name] : null;
   mus.step = 0;
   mus.next = ctx ? ctx.currentTime + 0.06 : 0;
+  if (ctx && musEcho && mus.def)                 // эхо в такт: пунктирная восьмая
+    musEcho.delay.delayTime.setTargetAtTime(mus.def.stepDur * 3, ctx.currentTime, 0.05);
 }
 
 function tick() {
