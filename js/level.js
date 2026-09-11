@@ -57,6 +57,8 @@ const LEVEL1 = {
   boss: 'warden',
   bossName: 'WARDEN',
   bossHp: 3,
+  // цвета общих эффектов (пыль от врагов и плит, поток вентилятора)
+  fx: { lift: ['#22e5ff', '#e6ecff'], dust: ['#aab4d4', '#4a5680', '#ff9a2e'] },
   checkpoints: [1, 24, 43, 61, 81, 101, 121, 142, 161, 181, 201, 221],
   map: L1_A.map((row, i) => row + L1_B[i]),
 };

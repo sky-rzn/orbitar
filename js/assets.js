@@ -53,6 +53,36 @@ const PAL = {
   h: '#1d0d38', // теневая сторона луны
   j: '#1a4d3a', // листва (фон)
   J: '#265c44',
+  // ---- сдвиг палитры (ASHEN CITADEL — пепельная цитадель) ----
+  //  тот же язык «неон по тёмному металлу»: металл пепельно-лиловый,
+  //  неон — золото, подсветка антиграва — азур, кристаллы — аметист,
+  //  опасность — разлом пустоты вместо ям и расплава.
+  K3: '#120b16', // почти чёрный (лиловый)
+  D3: '#241a2e', // сумрак
+  d3: '#32263c', // тёмный металл
+  M3: '#5b4d66', // металл (пепел)
+  m3: '#877a90', // светлый металл
+  W3: '#c6bac5', // блик металла (кость)
+  w3: '#fff4ef', // белый
+  C3: '#ffb02e', // неон-золото
+  c3: '#a8670c', // тёмное золото
+  P3: '#3cc8ff', // азур
+  p3: '#1b5d94', // тёмный азур
+  Y3: '#ffe9a8', // светлое золото
+  O3: '#ff7a3c', // оранжевый
+  o3: '#a8431a',
+  G3: '#c46bff', // аметист
+  g3: '#6a2ba8',
+  B3: '#ff5a7a', // роза (энергия портала)
+  b3: '#8a1f3c',
+  V3: '#3a2450', // фон-фиолет
+  v3: '#5c3b78',
+  // разлом пустоты (только третий уровень, без подмены по теме)
+  Z0: '#060310', // сердцевина разлома
+  Z1: '#150a26', // толща
+  Z2: '#2e1358', // свечение
+  Z3: '#7a3cff', // край
+  Z4: '#dcbcff', // искры
 };
 
 // Тема = таблица подмены ключей палитры. null — исходная (ORBITAL FOUNDRY).
@@ -65,7 +95,17 @@ const TH_REACTOR = {
   G: 'T', g: 't',   // кристаллы → бирюзовые споровые наросты
   B: 'U', b: 'u', V: 'u', v: 'U',
 };
-const THEMES = [TH_FOUNDRY, TH_REACTOR];
+// Пепельная цитадель: красный оставлен непеременным — опасность читается
+// одинаково на всех уровнях, а вокруг неё меняется вся остальная гамма.
+const TH_CITADEL = {
+  K: 'K3', D: 'D3', d: 'd3', M: 'M3', m: 'm3', W: 'W3', w: 'w3',
+  C: 'C3', c: 'c3',   // неоновая кромка грунта — золото
+  P: 'P3', p: 'p3',   // подсветка антиграв-платформ — азур
+  Y: 'Y3', O: 'O3', o: 'o3',
+  G: 'G3', g: 'g3',   // кристаллы → аметистовые шпили
+  B: 'B3', b: 'b3', V: 'V3', v: 'v3',
+};
+const THEMES = [TH_FOUNDRY, TH_REACTOR, TH_CITADEL];
 
 const TILE = 16;
 
@@ -289,6 +329,117 @@ const TURRET = [
 ];
 
 // ------------------------------------------------------------
+//  ПРЫГУН «LEAPER» 16x14, 3 позы — сидит, приседает (телеграф), летит
+// ------------------------------------------------------------
+const LEAPER = {
+  idle: [
+    '................',
+    '................',
+    '.....MMMMMM.....',
+    '...MMWWWWWWMM...',
+    '..MWWKKKKKKWWM..',
+    '..MWKRRKKRRKWM..',
+    '..MWKKKKKKKKWM..',
+    '..MWWmmmmmmWWM..',
+    '...MMMMMMMMMM...',
+    '..MM.MM..MM.MM..',
+    '..MM.MM..MM.MM..',
+    '.MMM.DD..DD.MMM.',
+    '.MM..DD..DD..MM.',
+    '.M...MM..MM...M.',
+  ],
+  crouch: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '.....MMMMMM.....',
+    '...MMWWWWWWMM...',
+    '..MWWKKKKKKWWM..',
+    '..MWKYYKKYYKWM..',
+    '..MWKKKKKKKKWM..',
+    '..MWWmmmmmmWWM..',
+    '.MMMMMMMMMMMMMM.',
+    '.MM.DD....DD.MM.',
+    'MMM.DD....DD.MMM',
+    'MM...MMMMMM...MM',
+  ],
+  air: [
+    '.....MMMMMM.....',
+    '...MMWWWWWWMM...',
+    '..MWWKKKKKKWWM..',
+    '..MWKwwKKwwKWM..',
+    '..MWKKKKKKKKWM..',
+    '..MWWmmmmmmWWM..',
+    '...MMMMMMMMMM...',
+    '..M..MM..MM..M..',
+    '.MM..DD..DD..MM.',
+    '.M...DD..DD...M.',
+    '.M...MM..MM...M.',
+    '.....MM..MM.....',
+    '.....M....M.....',
+    '....MM....MM....',
+  ],
+};
+
+// ------------------------------------------------------------
+//  ИСКАТЕЛЬ «SEEKER» 12x12, 2 кадра — парящий глаз, медленно тянется к игроку
+// ------------------------------------------------------------
+const SEEKER = [
+  [
+    '....MMMM....',
+    '..MMWWWWMM..',
+    '.MWWKKKKWWM.',
+    '.MWKKGGKKWM.',
+    'MWKKGGGGKKWM',
+    'MWKGGwwGGKWM',
+    'MWKGGwwGGKWM',
+    'MWKKGGGGKKWM',
+    '.MWKKGGKKWM.',
+    '.MWWKKKKWWM.',
+    '..MMWWWWMM..',
+    '....MMMM....',
+  ],
+  [
+    '....MMMM....',
+    '..MMWWWWMM..',
+    '.MWWKKKKWWM.',
+    '.MWKKKKKKWM.',
+    'MWKKGGGGKKWM',
+    'MWKGGGGwwKWM',
+    'MWKGGGGwwKWM',
+    'MWKKGGGGKKWM',
+    '.MWKKKKKKWM.',
+    '.MWWKKKKWWM.',
+    '..MMWWWWMM..',
+    '....MMMM....',
+  ],
+];
+
+// ------------------------------------------------------------
+//  ПИЛА «SAW» 16x16 — неуязвимая, катается по рельсе; кадр = поворот диска
+// ------------------------------------------------------------
+function sawSprite(frame, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  const cx = 7.5, cy = 7.5;
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const d = Math.hypot(x - cx, y - cy);
+    if (d <= 3.4) q.p(x, y, 'd');
+    else if (d <= 5.2) q.p(x, y, 'M');
+    else if (d <= 6.3) q.p(x, y, 'W');
+  }
+  for (let i = 0; i < 8; i++) {                       // зубья
+    const a = (i / 8) * Math.PI * 2 + frame * Math.PI / 8;
+    q.p(Math.round(cx + Math.cos(a) * 7), Math.round(cy + Math.sin(a) * 7), 'w');
+    q.p(Math.round(cx + Math.cos(a) * 6), Math.round(cy + Math.sin(a) * 6), 'W');
+    const b = a + Math.PI / 8;
+    q.p(Math.round(cx + Math.cos(b) * 6), Math.round(cy + Math.sin(b) * 6), 'm');
+  }
+  q.r(6, 6, 4, 4, 'K'); q.r(7, 7, 2, 2, 'R');         // ступица
+  return c;
+}
+
+// ------------------------------------------------------------
 //  БОСС «WARDEN» 32x24 — композиция: люк + корпус + двигатели
 // ------------------------------------------------------------
 const BOSS_HATCH = {
@@ -414,6 +565,78 @@ function boss2Sprite(open, eyes, legs, mono) {
     q.r(17, 3, 6, 5, 'G'); q.r(18, 4, 4, 3, 'w');
     q.p(15, 1, 'G'); q.p(24, 1, 'G');
     q.r(12, 9, 16, 1, 'M'); q.hl(12, 9, 16, 'W');
+  }
+  return c;
+}
+
+// ------------------------------------------------------------
+//  БОСС «SOVEREIGN» 36x30 — венценосная машина ASHEN CITADEL (процедурно)
+//  open — корона раскрыта, ядро наружу; wing — наклон боковых мантий
+// ------------------------------------------------------------
+function boss3Sprite(open, eyes, wing, mono) {
+  const c = makeCanvas(36, 30), q = px(c.getContext('2d'), TH_CITADEL, mono);
+  const tilt = wing === 1 ? 1 : wing === 2 ? -1 : 0;
+
+  // ---- боковые мантии-пилоны ----
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 14; i++) {
+      const w = 6 - Math.floor(Math.abs(i - 6) / 3);
+      const y = 9 + i + (i < 7 ? tilt : 0);
+      const x = s < 0 ? 1 : 35 - w;
+      q.r(x, y, w, 1, i % 5 === 2 ? 'm' : 'M');
+      q.p(s < 0 ? x : x + w - 1, y, s < 0 ? 'W' : 'd');
+    }
+    const vx = s < 0 ? 3 : 32;
+    q.vl(vx, 13 + tilt, 6, 'C');                      // золотая прожилка мантии
+    q.p(vx, 12 + tilt, 'Y');
+  }
+
+  // ---- корпус ----
+  const inset = [10, 8, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 8, 9, 11, 13];
+  for (let i = 0; i < inset.length; i++) {
+    const y = 7 + i, x0 = inset[i], w = 36 - x0 * 2;
+    q.r(x0, y, w, 1, 'M');
+    q.hl(x0, y, 2, 'W'); q.hl(x0 + w - 2, y, 2, 'd');
+  }
+  q.hl(inset[0], 7, 36 - inset[0] * 2, 'W');
+  q.hl(inset[17], 24, 36 - inset[17] * 2, 'K');
+  // визор с тремя глазами
+  q.r(8, 11, 20, 7, 'K'); q.hl(8, 11, 20, 'D'); q.hl(8, 17, 20, 'D');
+  for (const ex of [11, 17, 23]) {
+    q.r(ex, 13, 3, 2, eyes);
+    q.p(ex + 1, 15, eyes === 'R' ? 'r' : eyes);
+  }
+  // рёбра и вентиляция
+  q.r(10, 19, 16, 2, 'd'); q.hl(10, 19, 16, 'm'); q.hl(13, 20, 10, 'C');
+  q.r(14, 22, 8, 2, 'd'); q.hl(14, 22, 8, 'm');
+  // антиграв-подвес
+  for (let i = 0; i < 4; i++) {
+    const w = 12 - i * 2;
+    q.r(18 - w / 2, 25 + i, w, 1, i < 2 ? 'M' : 'P');
+  }
+  q.p(17, 29, 'P'); q.p(18, 29, 'w');
+
+  // ---- корона / раскрытое ядро ----
+  if (!open) {
+    const crown = [[16, 4], [14, 8], [12, 12], [10, 16], [9, 18]];
+    for (let i = 0; i < crown.length; i++) {
+      const y = i + 2, x0 = crown[i][0], w = crown[i][1];
+      q.r(x0, y, w, 1, 'M'); q.hl(x0, y, 2, 'W'); q.hl(x0 + w - 2, y, 2, 'd');
+    }
+    q.hl(16, 2, 4, 'W');
+    q.r(15, 4, 6, 2, 'C'); q.p(17, 4, 'Y'); q.p(18, 5, 'w');   // камень короны
+    q.p(8, 6, 'M'); q.p(27, 6, 'M');
+  } else {
+    for (let i = 0; i < 6; i++) {                     // лепестки короны разошлись
+      const y = i + 1, w = 6 - Math.floor(i / 3);
+      q.r(3 + i, y, w, 1, 'M'); q.p(3 + i, y, 'W');
+      q.r(33 - i - w, y, w, 1, 'M'); q.p(32 - i, y, 'd');
+    }
+    q.r(13, 1, 10, 8, 'g');                           // ядро
+    q.r(14, 0, 8, 10, 'G');
+    q.r(15, 2, 6, 5, 'G'); q.r(16, 3, 4, 3, 'w');
+    q.p(13, 0, 'G'); q.p(22, 0, 'G');
+    q.r(11, 8, 14, 1, 'M'); q.hl(11, 8, 14, 'W');
   }
   return c;
 }
@@ -657,6 +880,104 @@ function tileMeltBody(th) {
   return c;
 }
 
+// --- новые тайлы ASHEN CITADEL ---
+
+// Фазовая плита: группа 0 (золото) и 1 (азур) гаснут по очереди.
+// stage: 0 — твёрдая, 1 — предупреждение, 2 — призрак (проходится насквозь)
+function tilePhase(group, stage, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  const neon = group ? 'P' : 'C', dark = group ? 'p' : 'c';
+  const rune = (col, faint) => {
+    if (!group) {                                   // ромб
+      for (let i = 0; i < 4; i++) { q.hl(7 - i, 4 + i, 2 + i * 2, col); q.hl(7 - i, 11 - i, 2 + i * 2, col); }
+      if (!faint) { q.p(7, 5, 'w'); q.p(6, 6, 'w'); }
+    } else {                                        // кольцо
+      q.r(5, 4, 6, 2, col); q.r(5, 9, 6, 2, col); q.r(4, 5, 2, 5, col); q.r(10, 5, 2, 5, col);
+      if (!faint) { q.p(5, 4, 'w'); q.p(10, 10, 'w'); }
+    }
+  };
+  if (stage === 2) {                                // призрак: только разметка
+    for (let i = 0; i < 16; i += 3) { q.p(i, 0, dark); q.p(i, 15, dark); q.p(0, i, dark); q.p(15, i, dark); }
+    for (const [sx, sy] of [[0, 0], [14, 0], [0, 14], [14, 14]]) { q.r(sx, sy, 2, 1, dark); q.r(sx, sy, 1, 2, dark); }
+    rune('D', true);
+    return c;
+  }
+  q.r(0, 0, 16, 16, 'M');
+  q.hl(0, 0, 16, 'W'); q.vl(0, 0, 16, 'm');
+  q.hl(0, 15, 16, 'K'); q.vl(15, 0, 16, 'd');
+  q.r(2, 2, 12, 12, 'D'); q.hl(2, 2, 12, 'K');
+  rune(stage === 1 ? dark : neon, stage === 1);
+  for (const [sx, sy] of [[1, 1], [13, 1], [1, 13], [13, 13]]) q.r(sx, sy, 2, 2, stage === 1 ? 'Y' : neon);
+  return c;
+}
+
+// Конвейерная лента: твёрдый пол, тянущий игрока. dir = -1 / 1, 4 кадра
+function tileConveyor(dir, frame, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  q.r(0, 0, 16, 16, 'M');
+  q.hl(0, 0, 16, 'W');
+  q.r(0, 1, 16, 6, 'K'); q.hl(0, 1, 16, 'd');
+  for (let i = -1; i < 3; i++) {                    // стрелки бегут по ленте в сторону тяги
+    const x = ((i * 8 + dir * frame * 2) % 16 + 16) % 16;
+    const at = k => ((x + dir * k) % 16 + 16) % 16;
+    for (let k = 0; k < 3; k++) { q.p(at(k), 3 + k, 'c'); q.p(at(k), 5 - k, 'c'); }
+    for (let k = 0; k < 3; k++) { q.p(at(k), 2 + k, 'C'); q.p(at(k), 6 - k, 'C'); }
+  }
+  q.hl(0, 7, 16, 'm');
+  q.r(0, 8, 16, 8, 'd'); q.hl(0, 15, 16, 'K');
+  for (const rx of [3, 11]) {                       // ролики
+    q.r(rx, 10, 4, 4, 'M'); q.hl(rx, 10, 4, 'm');
+    q.p(rx + ((frame + rx) % 3), 12, 'K');
+  }
+  return c;
+}
+
+// Пресс: тяжёлая голова с зубьями и штанга-шахта над ней
+function pressHead(hot, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  q.r(0, 0, 16, 11, 'M');
+  q.hl(0, 0, 16, 'W'); q.hl(0, 1, 16, 'm');
+  q.vl(0, 0, 11, 'm'); q.vl(15, 0, 11, 'd');
+  q.r(2, 3, 12, 4, 'd'); q.hl(2, 3, 12, 'K');
+  q.hl(3, 5, 10, hot ? 'R' : 'c');                  // индикатор готовности
+  q.hl(0, 10, 16, 'K'); q.r(0, 11, 16, 2, 'd'); q.hl(0, 11, 16, 'm');
+  for (let x = 1; x < 15; x += 3) {                 // зубья
+    q.r(x, 13, 2, 1, 'W'); q.r(x, 14, 2, 1, 'm'); q.p(x, 15, 'w');
+  }
+  return c;
+}
+function pressShaft(th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  q.r(5, 0, 6, 16, 'M'); q.vl(5, 0, 16, 'W'); q.vl(7, 0, 16, 'm'); q.vl(10, 0, 16, 'd');
+  q.r(4, 2, 8, 2, 'd'); q.hl(4, 2, 8, 'm');
+  q.r(4, 10, 8, 2, 'd'); q.hl(4, 10, 8, 'm');
+  return c;
+}
+
+// Разлом пустоты: поверхность (3 кадра) и толща (2 кадра). Вне тем — свой набор цветов.
+function tileVoidTop(frame) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'));
+  for (let x = 0; x < 16; x++) {
+    const y = 2 + Math.round(1.4 * Math.sin((x + frame * 2.7) / 2.6));
+    q.p(x, y, 'Z4');
+    q.r(x, y + 1, 1, 2, 'Z3');
+    q.r(x, y + 3, 1, 3, 'Z2');
+    q.r(x, y + 6, 1, 16 - y - 6, 'Z1');
+    if ((x * 3 + frame * 5) % 7 === 0) q.p(x, y + 5 + (frame % 3), 'Z3');
+  }
+  return c;
+}
+function tileVoidBody(frame) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'));
+  q.r(0, 0, 16, 16, 'Z1');
+  q.r(1, 2, 14, 12, 'Z0');
+  for (let i = 0; i < 7; i++) {                     // искры в глубине
+    const x = (i * 5 + frame * 3) % 16, y = (i * 7 + frame * 5) % 16;
+    q.p(x, y, 'Z2'); q.p((x + 3) % 16, (y + 5) % 16, i % 3 ? 'Z2' : 'Z3');
+  }
+  return c;
+}
+
 // Портал выхода 32x32, 2 кадра
 function portal(frame, th) {
   const c = makeCanvas(32, 32), q = px(c.getContext('2d'), th);
@@ -880,6 +1201,123 @@ function bgRoots(w, h) { // ближний слой: корни, трубопр�
 }
 
 // ------------------------------------------------------------
+//  ФОНЫ — ASHEN CITADEL (пепельная цитадель): те же три слоя
+// ------------------------------------------------------------
+function bgAshSky(w, h) {
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const bands = ['#160d1c', '#1c1122', '#221528', '#28192c', '#2e1d2f', '#352131', '#3c2631', '#432b30', '#4a312f'];
+  for (let i = 0; i < bands.length; i++) q.r(0, Math.floor(i * h / bands.length), w, Math.ceil(h / bands.length) + 1, bands[i]);
+  const R = rng(41);
+  // пепел и угли в воздухе
+  for (let i = 0; i < 170; i++) {
+    const x = Math.floor(R() * w), y = Math.floor(R() * h * 0.85);
+    q.p(x, y, R() < 0.18 ? 'C3' : R() < 0.5 ? 'W3' : 'M3');
+    if (R() < 0.1) { q.p(x, y + 1, 'd3'); q.p(x + 1, y, 'd3'); }
+  }
+  // затмение: чёрный диск с золотой короной
+  const cx = 214, cy = 58, rad = 27;
+  for (let i = 0; i < 360; i += 3) {                 // лучи короны
+    const a = i * Math.PI / 180, len = rad + 4 + (i % 27 === 0 ? 12 : i % 9 === 0 ? 7 : 3);
+    for (let d = rad; d < len; d++) {
+      const x = Math.round(cx + Math.cos(a) * d), y = Math.round(cy + Math.sin(a) * d);
+      q.p(x, y, d < rad + 3 ? 'Y3' : d < rad + 7 ? 'C3' : 'o3');
+    }
+  }
+  for (let y = -rad; y <= rad; y++) for (let x = -rad; x <= rad; x++) {
+    const d = Math.hypot(x, y);
+    if (d > rad) continue;
+    q.p(cx + x, cy + y, d > rad - 1.6 ? 'C3' : d > rad - 3 ? 'o3' : 'K3');
+  }
+  // пепельная дымка у горизонта
+  const R2 = rng(67);
+  for (let i = 0; i < 460; i++) {
+    const x = Math.floor(R2() * 200 + 10), y = Math.floor(R2() * 64 + 84);
+    q.p(x, y, R2() < 0.5 ? 'V3' : 'v3');
+  }
+  return c;
+}
+
+function bgSpires(w, h) {  // дальний слой: шпили цитадели
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const R = rng(13);
+  let x = 0;
+  while (x < w) {
+    const bw = 12 + Math.floor(R() * 18), bh = 60 + Math.floor(R() * 110);
+    const top = h - bh;
+    q.r(x, top, bw, bh, 'D3');
+    q.vl(x, top, bh, 'd3'); q.vl(x + bw - 1, top, bh, 'K3');
+    // шпиль
+    const sw = Math.min(9, bw - 2), sx = x + Math.floor((bw - sw) / 2);
+    for (let i = 0; i < 18; i++) {
+      const ww = Math.max(1, sw - Math.round(i * sw / 18) * 2 + (i > 12 ? 1 : 0));
+      q.r(sx + Math.floor((sw - ww) / 2), top - 18 + i, Math.max(1, ww), 1, 'D3');
+    }
+    q.r(sx, top - 6, sw, 2, 'D3'); q.hl(sx, top - 6, sw, 'd3');   // карниз шпиля
+    q.p(sx + Math.floor(sw / 2), top - 20, 'C3'); q.p(sx + Math.floor(sw / 2), top - 19, 'c3');
+    // стрельчатые окна
+    for (let wy = top + 10; wy < h - 6; wy += 14)
+      for (let wx = x + 3; wx < x + bw - 3; wx += 7)
+        if (R() < 0.34) { q.r(wx, wy, 2, 4, R() < 0.82 ? 'c3' : 'C3'); q.p(wx, wy - 1, 'c3'); q.p(wx + 1, wy - 1, 'c3'); }
+    // контрфорс
+    if (R() < 0.45) { q.r(x - 3, h - 40, 3, 40, 'D3'); q.vl(x - 3, h - 40, 40, 'K3'); }
+    x += bw + 3 + Math.floor(R() * 10);
+  }
+  return c;
+}
+
+function bgRamparts(w, h) {  // ближний слой: колоннада, знамёна, жаровни
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const g = c.getContext('2d');
+  const R = rng(53);
+  // верхняя галерея: сплошная стена, в которой прорезаны стрельчатые пролёты
+  q.r(0, 52, w, 38, 'D3');
+  q.hl(0, 52, w, 'd3'); q.hl(0, 53, w, 'D3'); q.hl(0, 89, w, 'K3');
+  for (let x = 0; x < w; x += 38) {
+    for (const ax of [x + 5, x + 23]) {
+      for (let i = 0; i < 28; i++) {                 // тёмный обвод проёма
+        const half = i < 9 ? Math.round(6 * Math.sin((i / 9) * Math.PI / 2)) : 6;
+        q.r(ax + 6 - half, 57 + i, half * 2, 1, 'K3');
+      }
+      for (let i = 0; i < 26; i++) {                 // сам проём — насквозь
+        const half = i < 8 ? Math.round(5 * Math.sin((i / 8) * Math.PI / 2)) : 5;
+        g.clearRect(ax + 6 - half, 59 + i, half * 2, 1);
+      }
+    }
+    q.vl(x + 17, 56, 33, 'd3'); q.vl(x + 18, 56, 33, 'D3');   // пилястра между пролётами
+    q.r(x + 15, 54, 6, 2, 'd3'); q.hl(x + 15, 54, 6, 'M3');
+    q.p(x + 17, 62, 'c3');
+  }
+  // колонны, знамёна и жаровни нижнего яруса
+  let x = 6;
+  while (x < w) {
+    const kind = R();
+    if (kind < 0.4) {                                // колонна
+      const ph = 80 + Math.floor(R() * 90);
+      q.r(x, h - ph, 8, ph, 'D3');
+      q.vl(x, h - ph, ph, 'd3'); q.vl(x + 7, h - ph, ph, 'K3');
+      q.r(x - 2, h - ph, 12, 4, 'D3'); q.hl(x - 2, h - ph, 12, 'd3');
+      for (let y = h - ph + 10; y < h; y += 14) q.hl(x + 1, y, 6, 'K3');
+    } else if (kind < 0.7) {                         // знамя с гербом
+      const py = 92 + Math.floor(R() * 44), ph = 40 + Math.floor(R() * 26);
+      q.r(x - 2, py - 3, 18, 3, 'D3'); q.hl(x - 2, py - 3, 18, 'd3');
+      q.r(x, py, 14, ph, 'K3'); q.vl(x, py, ph, 'D3'); q.vl(x + 13, py, ph, 'D3');
+      for (let i = 0; i < 3; i++) q.p(x + 5 + i * 2, py + ph, 'K3');
+      const col = ['c3', 'p3', 'b3', 'g3'][Math.floor(R() * 4)];
+      q.r(x + 5, py + 8, 4, 4, col); q.p(x + 6, py + 9, 'D3');
+      q.hl(x + 3, py + 16, 8, col); q.hl(x + 4, py + 19, 6, col);
+    } else {                                         // жаровня на стойке
+      const py = 104 + Math.floor(R() * 40);
+      q.r(x + 5, py, 4, h - py, 'D3'); q.vl(x + 5, py, h - py, 'd3');
+      q.r(x + 1, py - 5, 12, 5, 'D3'); q.hl(x + 1, py - 5, 12, 'd3'); q.hl(x + 1, py - 1, 12, 'K3');
+      q.r(x + 3, py - 8, 8, 3, 'o3'); q.r(x + 4, py - 10, 6, 3, 'O3');
+      q.r(x + 5, py - 12, 4, 2, 'C3'); q.p(x + 6, py - 13, 'Y3');
+    }
+    x += 30 + Math.floor(R() * 40);
+  }
+  return c;
+}
+
+// ------------------------------------------------------------
 //  Сборка
 // ------------------------------------------------------------
 function buildTheme(th) {
@@ -903,6 +1341,10 @@ function buildTheme(th) {
   T.gate = [tileGate(0, th), tileGate(1, th), tileGate(2, th)];
   T.meltTop = [tileMeltTop(0, th), tileMeltTop(1, th)];
   T.meltBody = tileMeltBody(th);
+  T.phase = [0, 1].map(g => [tilePhase(g, 0, th), tilePhase(g, 1, th), tilePhase(g, 2, th)]);
+  T.belt = [-1, 1].map(d => [0, 1, 2, 3].map(f => tileConveyor(d, f, th)));
+  T.press = [pressHead(false, th), pressHead(true, th)];
+  T.shaft = pressShaft(th);
   return T;
 }
 
@@ -914,6 +1356,8 @@ function buildAssets() {
     A.player[k] = [spriteFromRows(rows, false), spriteFromRows(rows, true)];
   }
   A.cell = CELL.map(r => spriteFromRows(r));
+  // разлом пустоты живёт вне тем — своя палитра Z*
+  A.rift = { top: [tileVoidTop(0), tileVoidTop(1), tileVoidTop(2)], body: [tileVoidBody(0), tileVoidBody(1)] };
 
   A.boss = {
     dormant: bossSprite('closed', 'G', 'r', 'off'),
@@ -930,6 +1374,21 @@ function buildAssets() {
     open: [boss2Sprite(true, 'r', 0), boss2Sprite(true, 'R', 0)],
     flash: boss2Sprite(false, 'w', 0, 'w'),
   };
+  A.boss3 = {
+    dormant: [boss3Sprite(false, 'r', 0), boss3Sprite(false, 'd', 0)],
+    hover: [boss3Sprite(false, 'R', 1), boss3Sprite(false, 'R', 2)],
+    aim: [boss3Sprite(false, 'Y', 1), boss3Sprite(false, 'w', 2)],
+    cast: [boss3Sprite(false, 'w', 2), boss3Sprite(false, 'Y', 1)],
+    open: [boss3Sprite(true, 'r', 0), boss3Sprite(true, 'R', 1)],
+    flash: boss3Sprite(false, 'w', 0, 'w'),
+  };
+
+  // фоны собираются лениво — по одному набору на тему
+  const BG = [
+    () => ({ far: bgSky(320, 224), mid: bgCity(480, 224), near: bgStructures(640, 224) }),
+    () => ({ far: bgSporeSky(320, 224), mid: bgFungalTowers(480, 224), near: bgRoots(640, 224) }),
+    () => ({ far: bgAshSky(320, 224), mid: bgSpires(480, 224), near: bgRamparts(640, 224) }),
+  ];
 
   // темы: тайлы + враги + фоны
   for (let i = 0; i < THEMES.length; i++) {
@@ -939,11 +1398,13 @@ function buildAssets() {
       drone: DRONE.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
       crawler: CRAWLER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
       turret: TURRET.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      leaper: Object.fromEntries(Object.keys(LEAPER).map(k =>
+        [k, [spriteFromRows(LEAPER[k], false, th), spriteFromRows(LEAPER[k], true, th)]])),
+      seeker: SEEKER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      saw: [0, 1, 2, 3].map(f => sawSprite(f, th)),
       portal: [portal(0, th), portal(1, th)],
       moving: movingPlatform(th),
-      bg: i === 0
-        ? { far: bgSky(320, 224), mid: bgCity(480, 224), near: bgStructures(640, 224) }
-        : { far: bgSporeSky(320, 224), mid: bgFungalTowers(480, 224), near: bgRoots(640, 224) },
+      bg: BG[i](),
     });
   }
   return A;

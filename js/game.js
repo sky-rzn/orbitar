@@ -1,5 +1,5 @@
 // ============================================================
-//  ORBITAR — игровой движок (два уровня)
+//  ORBITAR — игровой движок (три уровня)
 // ============================================================
 'use strict';
 (() => {
@@ -8,7 +8,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const A = buildAssets();
-const LEVELS = [LEVEL1, LEVEL2];
+const LEVELS = [LEVEL1, LEVEL2, LEVEL3];
 
 // ---------- масштабирование под окно (целочисленное) ----------
 function fit() {
@@ -27,8 +27,8 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 // чит-коды: LVL1/LVL2 — в начало уровня, BOSS1/BOSS2 — к его боссу, NEXT — сразу на следующий уровень
 const CHEATS = {
-  LVL1: { lv: 0 }, LVL2: { lv: 1 },
-  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true },
+  LVL1: { lv: 0 }, LVL2: { lv: 1 }, LVL3: { lv: 2 },
+  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true }, BOSS3: { lv: 2, boss: true },
   NEXT: { next: true },
 };
 const CHEAT_CODES = Object.keys(CHEATS);
@@ -75,19 +75,38 @@ const mid = (str, scale = 1) => Math.round(W / 2 - str.length * 4 * scale / 2);
 let LV, MAP, LW, LH, LEVEL_W, TL, TH, levelCanvas, ents, checkpoints, crumbleMask, levelIdx;
 
 function ch(x, y) { if (x < 0 || x >= LW) return '#'; if (y < 0 || y >= LH) return '.'; return MAP[y][x]; }
-// грунт, платформы и решётки вентиляторов держат всегда; осыпающаяся плита — пока цела
+// грунт, платформы, решётки вентиляторов и ленты держат всегда;
+// осыпающаяся плита — пока цела, фазовая — пока её группа не погасла
 function isSolid(x, y) {
   const c = ch(x, y);
-  if (c === '#' || c === 'P' || c === 'U') return true;
+  if (c === '#' || c === 'P' || c === 'U' || c === '<' || c === '>') return true;
   if (c === 'X') return crumbleMask[y * LW + x] === 1;
+  if (c === '=') return phaseStage(0) !== 2;
+  if (c === '+') return phaseStage(1) !== 2;
   return false;
 }
-const isStatic = (x, y) => { const c = ch(x, y); return c === '#' || c === 'P' || c === 'U'; };
+const isStatic = (x, y) => {
+  const c = ch(x, y);
+  return c === '#' || c === 'P' || c === 'U' || c === '<' || c === '>';
+};
 const isOneWay = (x, y) => ch(x, y) === '-';
 
 const PHYS = { accel: 0.22, maxSpeed: 1.7, friction: 0.28, airAccel: 0.16, gravity: 0.24, maxFall: 5.2, jump: -5.3, jumpCut: -1.8, spring: -7.6, coyote: 6, buffer: 6 };
 const CRUMBLE = { hold: 42, gone: 150 };     // кадров под ногами / до восстановления
 const GATE = { period: 170, warn: 90, on: 110 }; // цикл затвора: выкл → предупреждение → луч
+// Фазовые плиты: группы гаснут по очереди, между ними есть окно `both`,
+// когда тверды обе — в него и надо успеть перескочить.
+const PHASE = { period: 260, solo: 90, both: 40 };
+const PRESS = { wait: 74, warn: 26, hold: 24, accel: 0.85, maxFall: 8.5, rise: 0.62 };
+const BELT = 0.62;                           // тяга конвейерной ленты, px/кадр
+
+// 0 — тверда, 1 — предупреждение (ещё тверда), 2 — призрак
+function phaseStage(group) {
+  const t = frame % PHASE.period;
+  if (!group) return t < PHASE.solo ? 0 : t < PHASE.solo + PHASE.both ? 1
+    : t < PHASE.period - PHASE.both ? 2 : 0;
+  return t < PHASE.solo ? 2 : t < PHASE.period - PHASE.both ? 0 : 1;
+}
 
 let ARENA, boss, shots, waves, totalCells, cellsBank = 0, runTime = 0;
 
@@ -99,7 +118,8 @@ function loadLevel(idx) {
   TH = A.themes[LV.theme]; TL = TH.tiles;
   crumbleMask = new Int8Array(LW * LH);
   ents = { cells: [], drones: [], crawlers: [], turrets: [], movers: [], springs: [], anim: [],
-           crumbles: [], vents: [], gates: [], melt: [], portal: null, spawn: { x: 16, y: 100 } };
+           crumbles: [], vents: [], gates: [], melt: [], phases: [], belts: [], presses: [],
+           rifts: [], saws: [], leapers: [], seekers: [], portal: null, spawn: { x: 16, y: 100 } };
   checkpoints = [];
 
   levelCanvas = makeCanvas(LEVEL_W, H);
@@ -157,6 +177,26 @@ function loadLevel(idx) {
       case 't': ents.turrets.push({ x: px, y: py, dir: -1, alive: true, t: Math.random() * 100 | 0 }); break;
       case 'H': ents.movers.push({ x: px, y: py, w: 32, h: 8, axis: 'x', from: px, to: px + 3 * T, t: 0, speed: 0.012, dx: 0, dy: 0 }); break;
       case 'V': ents.movers.push({ x: px, y: py, w: 32, h: 8, axis: 'y', from: py + T, to: py - 3 * T, t: 0, speed: 0.009, dx: 0, dy: 0 }); break;
+      case '=': case '+': ents.phases.push({ x: px, y: py, group: c === '+' ? 1 : 0 }); break;
+      case '<': case '>': ents.belts.push({ x: px, y: py, dir: c === '>' ? 1 : -1 }); break;
+      case 'O': ents.rifts.push({ x: px, y: py, top: true }); break;
+      case 'o': ents.rifts.push({ x: px, y: py, top: false }); break;
+      case 'J': {                                  // пресс: ход от перекрытия до первого пола
+        let yy = y + 1;
+        while (yy < LH && !isStatic(x, yy)) yy++;
+        const wait = PRESS.wait + (x * 29) % 52;   // соседние прессы бьют вразнобой
+        ents.presses.push({ x: px, y: py, y0: py, y1: (yy - 1) * T, vy: 0, st: 0, wait, t: wait }); break;
+      }
+      case 'Q': {                                  // пила: катается по своей рельсе над полом
+        let minX = x, maxX = x;
+        while (minX > 0 && !isStatic(minX - 1, y) && isStatic(minX - 1, y + 1) && x - minX < 5) minX--;
+        while (maxX < LW - 1 && !isStatic(maxX + 1, y) && isStatic(maxX + 1, y + 1) && maxX - x < 5) maxX++;
+        ents.saws.push({ x: px, x0: px, y: py, minX: minX * T, maxX: maxX * T, dir: 1 }); break;
+      }
+      case 'j': ents.leapers.push({ x: px, y: py + 2, hx: px, hy: py + 2, vx: 0, vy: 0, dir: -1,
+                                    st: 0, t: 50 + (x * 17) % 60, alive: true, home: true }); break;
+      case 'k': ents.seekers.push({ x: px + 2, y: py + 2, hx: px + 2, hy: py + 2, vx: 0, vy: 0,
+                                    alive: true, t: (x * 23) % 60, home: true }); break;
     }
   }
   for (const col of LV.checkpoints) {
@@ -175,6 +215,8 @@ const BOSS_BOX = {
               shield: ['wake', 'hover', 'aim', 'slam'], weak: 'stun' },
   rootmind: { w: 40, h: 34, box: [3, 7, 34, 27], core: [6, 0, 28, 16],
               shield: ['wake', 'stalk', 'tell', 'dash', 'close'], weak: 'open' },
+  sovereign: { w: 36, h: 30, box: [4, 9, 28, 18], core: [10, 0, 16, 14],
+               shield: ['wake', 'volley', 'tell', 'beam', 'close'], weak: 'vent', ghost: 'blink' },
 };
 const bossDef = () => BOSS_BOX[boss.kind];
 const bossActive = () => boss.state !== 'idle' && boss.state !== 'dead';
@@ -202,6 +244,14 @@ function reset(full) {
   ents.turrets.forEach(t => { t.t = 0; });       // после возрождения турель даёт полный телеграф
   ents.crawlers = ents.crawlers.filter(c => c.home);
   for (const c of ents.crawlers) { c.alive = true; c.dir = -1; }
+  ents.leapers = ents.leapers.filter(l => l.home);
+  for (const l of ents.leapers) {
+    l.alive = true; l.st = 0; l.t = 50; l.vx = 0; l.vy = 0; l.x = l.hx; l.y = l.hy;
+  }
+  ents.seekers = ents.seekers.filter(k => k.home);
+  for (const k of ents.seekers) { k.alive = true; k.vx = 0; k.vy = 0; k.x = k.hx; k.y = k.hy; }
+  for (const p of ents.presses) { p.st = 0; p.t = p.wait; p.y = p.y0; p.vy = 0; }
+  for (const q of ents.saws) { q.x = q.x0; q.dir = 1; }
   for (const c of ents.crumbles) { c.st = 0; c.t = 0; crumbleMask[c.ty * LW + c.tx] = 1; }
   if (full || boss.state !== 'dead') resetBoss(); // побеждённый босс не воскресает на чекпоинте
   shots = [];
@@ -311,16 +361,60 @@ function updateCrumbles() {
     if (c.st === 1) {
       if (--c.t <= 0) {
         c.st = 2; c.t = CRUMBLE.gone; crumbleMask[c.ty * LW + c.tx] = 0;
-        spawnParticles(c.x + 8, c.y + 10, 14, ['#3d7053', '#1e3f2d', '#a8ff3d'], 2, 0.18, 34);
+        spawnParticles(c.x + 8, c.y + 10, 14, LV.fx.dust, 2, 0.18, 34);
       }
     } else if (c.st === 2) {
       if (--c.t <= 0 && !overlap(P, { x: c.x, y: c.y, w: T, h: T })) {
         c.st = 0; crumbleMask[c.ty * LW + c.tx] = 1;
-        spawnParticles(c.x + 8, c.y + 8, 8, ['#a8ff3d', '#ecfff2'], 1.4, 0, 20);
+        spawnParticles(c.x + 8, c.y + 8, 8, LV.fx.lift, 1.4, 0, 20);
       }
     }
   }
 }
+function updatePresses() {
+  for (const p of ents.presses) {
+    switch (p.st) {
+      case 0: if (--p.t <= 0) { p.st = 1; p.t = PRESS.warn; } break;            // покой
+      case 1: if (--p.t <= 0) { p.st = 2; p.vy = 0; } break;                    // телеграф: дрожит
+      case 2:                                                                   // удар вниз
+        p.vy = Math.min(PRESS.maxFall, p.vy + PRESS.accel);
+        p.y += p.vy;
+        if (p.y >= p.y1) {
+          p.y = p.y1; p.st = 3; p.t = PRESS.hold;
+          if (onScreen(p.x)) {
+            shake = 6;
+            spawnParticles(p.x + 8, p.y + 16, 12, LV.fx.dust, 2.6, 0.14, 26);
+          }
+        }
+        break;
+      case 3: if (--p.t <= 0) p.st = 4; break;                                  // держит
+      case 4:                                                                   // медленный подъём
+        p.y -= PRESS.rise;
+        if (p.y <= p.y0) { p.y = p.y0; p.st = 0; p.t = p.wait; }
+        break;
+    }
+  }
+}
+function updateSaws() {
+  for (const q of ents.saws) {
+    q.x += q.dir * 1.15;
+    if (q.x <= q.minX) { q.x = q.minX; q.dir = 1; }
+    if (q.x >= q.maxX) { q.x = q.maxX; q.dir = -1; }
+  }
+}
+
+// лента под ногами тянет игрока в сторону стрелок
+function beltPush() {
+  if (!P.grounded) return;
+  const ty = Math.floor((P.y + P.h) / T);
+  let dir = 0;
+  for (let tx = Math.floor(P.x / T); tx <= Math.floor((P.x + P.w - EPS) / T); tx++) {
+    const c = ch(tx, ty);
+    if (c === '>') dir++; else if (c === '<') dir--;
+  }
+  if (dir) moveX(Math.sign(dir) * BELT);
+}
+
 function touchCrumbles() {                       // плита начинает сыпаться под весом игрока
   if (!P.grounded) return;
   const ty = Math.floor((P.y + P.h) / T);
@@ -361,12 +455,13 @@ function updatePlayer() {
   for (const v of ents.vents) {
     if (P.x + P.w > v.x + 1 && P.x < v.x + T - 1 && P.y + P.h > v.y && P.y < v.y + v.h) {
       P.vy = Math.max(P.vy - 0.72, -3.0); P.jumping = false; P.lift = 6;
-      if (frame % 4 === 0) spawnParticles(P.x + 5, P.y + P.h, 1, ['#a8ff3d', '#ecfff2'], 0.8, -0.04, 18);
+      if (frame % 4 === 0) spawnParticles(P.x + 5, P.y + P.h, 1, LV.fx.lift, 0.8, -0.04, 18);
     }
   }
 
   moveX(P.vx);
   moveY(P.vy);
+  beltPush();
   touchCrumbles();
   if (bossActive() && P.x < ARENA.left + 16) { P.x = ARENA.left + 16; P.vx = 0; } // энергобарьер арены
 
@@ -402,26 +497,43 @@ function updatePlayer() {
   const hit = { x: P.x + 1, y: P.y + 2, w: P.w - 2, h: P.h - 3 };
   for (const a of ents.anim) if (a.kind === 'spikes' && overlap(hit, { x: a.x + 1, y: a.y + 2, w: 14, h: 10 })) die();
   for (const m of ents.melt) if (overlap(hit, { x: m.x, y: m.y + (m.top ? 5 : 0), w: T, h: m.top ? T - 5 : T })) die();
+  for (const r of ents.rifts) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 4 : 0), w: T, h: r.top ? T - 4 : T })) die();
+  for (const p of ents.presses) if (overlap(hit, { x: p.x + 1, y: p.y, w: 14, h: 16 })) die();
+  for (const q of ents.saws) if (overlap(hit, { x: q.x + 2, y: q.y + 2, w: 12, h: 12 })) die();
   for (const g of ents.gates) if (gateStage(g) === 2 && overlap(hit, { x: g.x + 5, y: g.beamY, w: 6, h: g.beamH })) die();
   for (const d of ents.drones) {
     if (!d.alive) continue;
     if (stompOrDie(hit, { x: d.x + 2, y: d.y + 3, w: 12, h: 6 }, d.y + 5)) {
       d.alive = false;
-      spawnParticles(d.x + 8, d.y + 6, 24, ['#ff3b3b', '#aab4d4', '#ff9a2e', '#4a5680'], 3, 0.12, 36);
+      spawnParticles(d.x + 8, d.y + 6, 24, [...LV.fx.dust, '#ff3b3b'], 3, 0.12, 36);
     }
   }
   for (const c of ents.crawlers) {
     if (!c.alive) continue;
     if (stompOrDie(hit, { x: c.x + 2, y: c.y + 2, w: 12, h: 9 }, c.y + 5)) {
       c.alive = false;
-      spawnParticles(c.x + 8, c.y + 6, 24, ['#a8ff3d', '#3d7053', '#ecfff2', '#ff3b3b'], 3, 0.12, 36);
+      spawnParticles(c.x + 8, c.y + 6, 24, [...LV.fx.dust, '#ff3b3b', '#e6ecff'], 3, 0.12, 36);
     }
   }
   for (const t of ents.turrets) {
     if (!t.alive) continue;
     if (stompOrDie(hit, { x: t.x + 2, y: t.y + 4, w: 13, h: 12 }, t.y + 7)) {
       t.alive = false;
-      spawnParticles(t.x + 8, t.y + 10, 26, ['#ffe14a', '#ff9a2e', '#3d7053', '#ecfff2'], 3, 0.12, 38);
+      spawnParticles(t.x + 8, t.y + 10, 26, [...LV.fx.dust, '#ffe14a', '#e6ecff'], 3, 0.12, 38);
+    }
+  }
+  for (const l of ents.leapers) {
+    if (!l.alive) continue;
+    if (stompOrDie(hit, { x: l.x + 2, y: l.y + 2, w: 12, h: 12 }, l.y + 5)) {
+      l.alive = false;
+      spawnParticles(l.x + 8, l.y + 8, 24, [...LV.fx.dust, '#ff3b3b'], 3, 0.12, 36);
+    }
+  }
+  for (const k of ents.seekers) {
+    if (!k.alive) continue;
+    if (stompOrDie(hit, { x: k.x + 1, y: k.y + 1, w: 10, h: 10 }, k.y + 4)) {
+      k.alive = false;
+      spawnParticles(k.x + 6, k.y + 6, 22, ['#c46bff', ...LV.fx.lift], 3, 0.1, 34);
     }
   }
   bossHazards(hit);
@@ -463,6 +575,48 @@ function updateCrawlers() {
     else c.x = nx;
   }
 }
+// Прыгун: сидит, приседает (телеграф), прыгает в сторону игрока
+function updateLeapers() {
+  for (const l of ents.leapers) {
+    if (!l.alive) continue;
+    if (l.st === 2) {
+      l.vy = Math.min(PHYS.maxFall, l.vy + PHYS.gravity);
+      const nx = l.x + l.vx;
+      const side = l.vx > 0 ? nx + 15 : nx;
+      if (isSolid(Math.floor(side / T), Math.floor((l.y + 8) / T))) l.vx *= -1; else l.x = nx;
+      l.y += l.vy;
+      if (l.vy > 0) {                              // приземление
+        const row = Math.floor((l.y + 16) / T);
+        const c0 = Math.floor((l.x + 3) / T), c1 = Math.floor((l.x + 12) / T);
+        if (isSolid(c0, row) || isSolid(c1, row)) {
+          l.y = row * T - 16; l.vy = 0; l.vx = 0; l.st = 0; l.t = 44 + (frame % 40);
+          if (onScreen(l.x)) spawnParticles(l.x + 8, l.y + 16, 5, ['#6b5c74', '#d2c7cf'], 1.4, 0.08, 14);
+        }
+      }
+      if (l.y > H + 24) { l.x = l.hx; l.y = l.hy; l.vx = l.vy = 0; l.st = 0; l.t = 60; }
+      continue;
+    }
+    if (!onScreen(l.x)) { l.t = Math.max(l.t, 24); continue; }
+    if (--l.t > 0) continue;
+    if (l.st === 0) { l.st = 1; l.t = 28; l.dir = P.x + P.w / 2 < l.x + 8 ? -1 : 1; }  // присел
+    else { l.st = 2; l.vy = -4.9; l.vx = l.dir * 1.25; }                                // прыжок
+  }
+}
+// Искатель: парящий глаз, медленно тянется к игроку, у стен останавливается
+function updateSeekers() {
+  for (const k of ents.seekers) {
+    if (!k.alive) continue;
+    k.t++;
+    const near = onScreen(k.x);
+    const tx = near ? P.x + P.w / 2 - 6 : k.hx, ty = near ? P.y + P.h / 2 - 6 : k.hy;
+    k.vx = clamp(k.vx + Math.sign(tx - k.x) * 0.035, -0.85, 0.85);
+    k.vy = clamp(k.vy + Math.sign(ty - k.y) * 0.035, -0.85, 0.85);
+    const nx = k.x + k.vx, ny = k.y + k.vy;
+    if (!isSolid(Math.floor((nx + 6) / T), Math.floor((k.y + 6) / T))) k.x = nx; else k.vx = 0;
+    if (!isSolid(Math.floor((k.x + 6) / T), Math.floor((ny + 6) / T))) k.y = ny; else k.vy = 0;
+  }
+}
+
 function updateTurrets() {
   for (const t of ents.turrets) {
     if (!t.alive) continue;
@@ -492,7 +646,7 @@ function updateParticles() {
 // ---------- боссы: общее ----------
 function bossHazards(hit) {
   const b = boss, d = bossDef();
-  if (b.state !== 'idle' && b.state !== 'dead' && b.state !== 'dying') {
+  if (b.state !== 'idle' && b.state !== 'dead' && b.state !== 'dying' && b.state !== d.ghost) {
     const box = bossBox(), push = () => { P.x = P.x + P.w / 2 < box.x + box.w / 2 ? box.x - P.w : box.x + box.w; P.vx = 0; };
     if (b.state === d.weak) {                                      // броня раскрыта: ядро сверху уязвимо
       const core = bossRect('core');
@@ -505,6 +659,7 @@ function bossHazards(hit) {
   }
   for (const s of shots) if (overlap(hit, { x: s.x - s.r, y: s.y - s.r, w: s.r * 2, h: s.r * 2 })) die();
   for (const w of waves) if (overlap(hit, { x: w.x - 4, y: ARENA.floorY - 7, w: 8, h: 7 })) die();
+  if (b.kind === 'sovereign' && b.state === 'beam' && overlap(hit, sovereignBeam())) die();
 }
 function hitBoss() {
   const b = boss;
@@ -535,7 +690,8 @@ function updateBoss() {
     b.y += (b.timer % 4 < 2) ? 0.6 : -0.4;
     if (--b.timer <= 0) bossDeath();
   } else if (b.kind === 'warden') updateWarden();
-  else updateRootmind();
+  else if (b.kind === 'rootmind') updateRootmind();
+  else updateSovereign();
   updateShots();
   for (const w of waves) { w.x += w.dir * 2.4; w.t++; }
   waves = waves.filter(w => w.x > ARENA.left + 18 && w.x < (LW - 6) * T - 4);
@@ -687,6 +843,105 @@ function updateRootmind() {
   }
 }
 
+// ---------- босс 3: SOVEREIGN (ASHEN CITADEL) ----------
+//  не ходит и не парит на месте: моргает по арене, бьёт веером копий,
+//  затем телеграфирует и включает вертикальный луч, ползущий за игроком.
+//  После луча корона перегревается и раскрывается — ядро можно топтать.
+function sovereignBeam() {
+  const b = boss;
+  return { x: b.x + 14, y: b.y + 28, w: 8, h: Math.max(0, ARENA.floorY - (b.y + 28)) };
+}
+function fireLance() {
+  const b = boss, sx = b.x + 18, sy = b.y + 20;
+  const dx = P.x + P.w / 2 - sx, dy = P.y + P.h / 2 - sy, len = Math.hypot(dx, dy) || 1;
+  const spd = 1.9 + bossRage() * 0.14;
+  for (const a of [-0.24, 0, 0.24]) {
+    const ca = Math.cos(a), sa = Math.sin(a);
+    shots.push({ x: sx, y: sy, vx: (dx * ca - dy * sa) / len * spd, vy: (dx * sa + dy * ca) / len * spd,
+                 g: 0, r: 2, life: 280, cols: ['#8a1f3c', '#ff5a7a', '#fff4ef'] });
+  }
+  spawnParticles(sx, sy, 5, ['#ff5a7a', '#ffb02e'], 1.4, 0, 12);
+}
+function dropShard() {                                   // осколок пустоты с потолка
+  const x = clamp(P.x + (Math.random() * 80 - 40), ARENA.left + 28, LEVEL_W - 40);
+  shots.push({ x, y: 6, vx: 0, vy: 1.2, g: 0.1, r: 3, life: 300, cols: ['#2e1358', '#7a3cff', '#dcbcff'] });
+  spawnParticles(x, 8, 4, ['#7a3cff', '#dcbcff'], 1, 0.05, 14);
+}
+function spawnSeeker(side) {
+  const x = side < 0 ? ARENA.left + 26 : LEVEL_W - 5 * T;
+  ents.seekers.push({ x, y: 96, hx: x, hy: 96, vx: 0, vy: 0, alive: true, t: 0, home: false });
+  spawnParticles(x + 6, 102, 14, ['#c46bff', '#3cc8ff'], 2, 0.02, 26);
+}
+function sovereignBlink() {                              // перенос в новую точку арены
+  const b = boss;
+  let tx = b.x;
+  for (let i = 0; i < 12; i++) {
+    tx = ARENA.xMin + Math.random() * (ARENA.xMax - ARENA.xMin);
+    if (Math.abs(tx + 18 - (P.x + P.w / 2)) > 56) break;
+  }
+  b.x = tx; b.y = 62 + Math.random() * 24;
+  spawnParticles(b.x + 18, b.y + 15, 20, ['#ffb02e', '#3cc8ff', '#fff4ef'], 3, 0.02, 28);
+}
+function updateSovereign() {
+  const b = boss, rage = bossRage();
+  switch (b.state) {
+    case 'idle':
+      if (state === 'play' && P.x >= ARENA.trigger) { b.state = 'wake'; b.timer = 100; shake = 4; }
+      break;
+    case 'wake':
+      if (b.timer > 55) b.x += (frame % 2 ? 1 : -1) * 0.5;                     // дрожит на троне
+      else b.y = Math.max(72, b.y - 1.6);                                      // поднимается
+      if (b.timer % 12 === 0) spawnParticles(b.x + 18, b.y + 28, 5, ['#ffb02e', '#6b5c74'], 2, 0.1, 22);
+      if (--b.timer <= 0) { b.state = 'volley'; b.timer = 130; b.boltT = 45; }
+      break;
+    case 'blink':
+      if (b.timer === 20) sovereignBlink();
+      if (--b.timer <= 0) { b.state = 'volley'; b.timer = 120 - rage * 10; b.boltT = 32; }
+      break;
+    case 'volley': {
+      b.y += Math.sin(b.t / 16) * 0.35;
+      const tx = clamp(P.x + P.w / 2 - 18, ARENA.xMin, ARENA.xMax);
+      b.x += clamp((tx - b.x) * 0.02, -0.5, 0.5);
+      if (--b.boltT <= 0) {
+        fireLance();
+        b.boltT = 64 - rage * 7;
+        if (rage >= 2) dropShard();
+      }
+      if (--b.timer <= 0) { b.state = 'tell'; b.timer = 52 - rage * 4; }
+      break;
+    }
+    case 'tell':                                                              // телеграф луча
+      b.x += (frame % 2 ? 1 : -1) * 0.5;
+      if (--b.timer <= 0) { b.state = 'beam'; b.timer = 56 + rage * 6; }
+      break;
+    case 'beam': {                                                            // луч ползёт за игроком
+      const spd = 0.5 + rage * 0.16;
+      const tx = clamp(P.x + P.w / 2 - 18, ARENA.xMin, ARENA.xMax);
+      b.x += clamp(tx - b.x, -spd, spd);
+      if (frame % 3 === 0)
+        spawnParticles(b.x + 18, ARENA.floorY - 3, 2, ['#ffb02e', '#fff4ef'], 2, -0.05, 16);
+      if (--b.timer <= 0) { b.state = 'vent'; b.timer = 150 - rage * 16; }
+      break;
+    }
+    case 'vent':                                                              // перегрев: ядро наружу
+      b.y += clamp(140 - b.y, -1.8, 1.8);          // опускается, чтобы до ядра можно было допрыгнуть
+      if (b.t % 14 === 0) spawnParticles(b.x + 18, b.y + 26, 3, ['#ff7a3c', '#ffb02e'], 1.6, -0.04, 20);
+      if (--b.timer <= 0) { b.state = 'close'; b.timer = 36; }
+      break;
+    case 'close':
+      b.y -= 1.2;
+      if (--b.timer <= 0) { b.state = 'blink'; b.timer = 40; }
+      break;
+    case 'recoil':
+      b.x += (frame % 2 ? 1 : -1) * 0.6;
+      if (--b.timer <= 0) {
+        b.state = 'blink'; b.timer = 40;
+        if (rage >= 2) { spawnSeeker(-1); spawnSeeker(1); }                    // раненый зовёт искателей
+      }
+      break;
+  }
+}
+
 // ---------- главный такт ----------
 function update() {
   frame++;
@@ -694,7 +949,11 @@ function update() {
   updateDrones();
   updateCrawlers();
   updateTurrets();
+  updateLeapers();
+  updateSeekers();
   updateCrumbles();
+  updatePresses();
+  updateSaws();
   updateBoss();
   updateParticles();
   if (state === 'play') { elapsed++; if (intro > 0) intro--; updatePlayer(); }
@@ -751,8 +1010,26 @@ function draw() {
     if (locked && Math.floor(frame / 20) % 2) { ctx.fillStyle = '#ff3b3b'; ctx.fillRect(ents.portal.x + 14, ents.portal.y + 14, 4, 4); }
   }
 
+  // разлом пустоты (под тайлами: грунт перекрывает его кромку)
+  for (const r of ents.rifts) {
+    if (!onScreen(r.x)) continue;
+    ctx.drawImage(r.top ? A.rift.top[Math.floor((frame + r.x / 8) / 9) % 3]
+                        : A.rift.body[Math.floor((frame + r.y) / 14) % 2], r.x, r.y);
+  }
+
   // тайлы
   ctx.drawImage(levelCanvas, cx, 0, W, H, cx, 0, W, H);
+
+  // конвейерные ленты и фазовые плиты
+  for (const b of ents.belts) {
+    if (!onScreen(b.x)) continue;
+    ctx.drawImage(TL.belt[b.dir > 0 ? 1 : 0][Math.floor(frame / 5) % 4], b.x, b.y);
+  }
+  for (const f of ents.phases) {
+    if (!onScreen(f.x)) continue;
+    const st = phaseStage(f.group);
+    ctx.drawImage(TL.phase[f.group][st === 1 && frame % 8 < 4 ? 0 : st], f.x, f.y);
+  }
 
   // расплав (анимированная поверхность)
   for (const m of ents.melt) if (m.top && onScreen(m.x))
@@ -764,13 +1041,13 @@ function draw() {
   for (const v of ents.vents) {
     if (!onScreen(v.x)) continue;
     ctx.drawImage(TL.vent[Math.floor(frame / 5) % 2], v.x, v.tileY);
-    ctx.globalAlpha = 0.2; ctx.fillStyle = '#a8ff3d';
+    ctx.globalAlpha = 0.2; ctx.fillStyle = LV.fx.lift[0];
     ctx.fillRect(v.x + 2, v.y, 12, v.h);
     ctx.globalAlpha = 1;
     for (let i = 0; i < 6; i++) {                       // восходящие «шевроны»
       const y = v.y + v.h - ((frame * 2.2 + i * v.h / 6) % v.h);
       const w = 4 + (i % 2) * 2, x = v.x + 8 - w / 2 + ((i * 5) % 7) - 3;
-      ctx.fillStyle = i % 2 ? '#a8ff3d' : '#ecfff2';
+      ctx.fillStyle = LV.fx.lift[i % 2];
       ctx.fillRect(Math.round(x), Math.round(y), w, 2);
       ctx.fillRect(Math.round(x) + 1, Math.round(y) + 2, w - 2, 1);
     }
@@ -779,6 +1056,25 @@ function draw() {
     if (c.st === 2 || !onScreen(c.x)) continue;
     const sh = c.st === 1 ? ((frame % 4 < 2) ? 1 : -1) : 0;
     ctx.drawImage(TL.crumble[c.st === 0 ? 0 : (c.t < CRUMBLE.hold / 2 ? 2 : 1)], c.x + sh, c.y);
+  }
+
+  // прессы: штанга-шахта до перекрытия + голова
+  for (const p of ents.presses) {
+    if (!onScreen(p.x)) continue;
+    for (let y = p.y - T; y >= p.y0; y -= T) ctx.drawImage(TL.shaft, p.x, y);
+    const sh = p.st === 1 ? ((frame % 4 < 2) ? 1 : -1) : 0;
+    ctx.drawImage(TL.press[p.st === 1 || p.st === 2 ? 1 : 0], p.x + sh, Math.round(p.y));
+    if (p.st === 1 && frame % 6 < 3) {             // отметка зоны удара
+      ctx.fillStyle = '#ffb02e';
+      for (let y = p.y + 18; y < p.y1 + 16; y += 8) ctx.fillRect(p.x + 7, y, 2, 3);
+    }
+  }
+  // пилы: рельса и диск
+  for (const q of ents.saws) {
+    if (!onScreen(q.x)) continue;
+    ctx.fillStyle = '#3b2d44'; ctx.fillRect(q.minX + 8, q.y + 13, q.maxX - q.minX + 1, 2);
+    ctx.fillStyle = '#6b5c74'; ctx.fillRect(q.minX + 8, q.y + 13, q.maxX - q.minX + 1, 1);
+    ctx.drawImage(TH.saw[Math.floor(frame / 3) % 4], Math.round(q.x), q.y);
   }
 
   // движущиеся платформы
@@ -799,6 +1095,15 @@ function draw() {
     ctx.drawImage(TH.crawler[Math.floor(c.t / 8) % 2][c.dir > 0 ? 0 : 1], Math.round(c.x), Math.round(c.y));
   for (const t of ents.turrets) if (t.alive)
     ctx.drawImage(TH.turret[turretCharging(t) && frame % 6 < 3 ? 1 : 0][t.dir > 0 ? 0 : 1], t.x, t.y);
+  for (const l of ents.leapers) if (l.alive) {
+    const pose = l.st === 2 ? 'air' : l.st === 1 ? 'crouch' : 'idle';
+    const sh = l.st === 1 && frame % 4 < 2 ? 1 : 0;
+    ctx.drawImage(TH.leaper[pose][l.dir > 0 ? 0 : 1], Math.round(l.x) + sh, Math.round(l.y));
+  }
+  for (const k of ents.seekers) if (k.alive) {
+    const bob = Math.round(Math.sin(k.t / 14) * 1.5);
+    ctx.drawImage(TH.seeker[Math.floor(k.t / 9) % 2][k.vx > 0 ? 0 : 1], Math.round(k.x), Math.round(k.y) + bob);
+  }
 
   // лазерные затворы
   for (const g of ents.gates) {
@@ -815,6 +1120,26 @@ function draw() {
       ctx.fillStyle = '#ff3b3b';
       const fy = g.beamY + g.beamH - 3;
       ctx.fillRect(g.x + 3 + (frame % 3), fy, 10 - (frame % 3) * 2, 3);
+    }
+  }
+
+  // вертикальный луч SOVEREIGN и его телеграф
+  if (boss.kind === 'sovereign' && (boss.state === 'tell' || boss.state === 'beam')) {
+    const r = sovereignBeam();
+    if (boss.state === 'tell') {
+      if (frame % 6 < 3) {
+        ctx.fillStyle = '#ffe9a8';
+        for (let y = r.y; y < r.y + r.h; y += 7) ctx.fillRect(r.x + 3, y, 2, 4);
+      }
+      ctx.fillStyle = frame % 8 < 4 ? '#ffb02e' : '#a8670c';
+      ctx.fillRect(r.x - 5, ARENA.floorY - 3, 18, 3);
+    } else {
+      ctx.fillStyle = '#a8431a'; ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#ffb02e'; ctx.fillRect(r.x + 1, r.y, r.w - 2, r.h);
+      ctx.fillStyle = frame % 4 < 2 ? '#fff4ef' : '#ffe9a8'; ctx.fillRect(r.x + 3, r.y, 2, r.h);
+      ctx.fillStyle = '#ffe9a8';
+      const fw = 14 - (frame % 3) * 3;
+      ctx.fillRect(r.x + 4 - fw / 2, ARENA.floorY - 4, fw, 4);
     }
   }
 
@@ -868,8 +1193,10 @@ function draw() {
 function drawBoss() {
   const b = boss, d = bossDef();
   if (b.state === 'dead') return;
-  const img = b.kind === 'warden' ? wardenFrame() : rootmindFrame();
+  const img = b.kind === 'warden' ? wardenFrame() : b.kind === 'rootmind' ? rootmindFrame() : sovereignFrame();
   const bx = Math.round(b.x), by = Math.round(b.y);
+  // шаг сквозь пространство: растворился — проявился на новом месте
+  if (b.state === d.ghost) ctx.globalAlpha = b.timer > 20 ? (b.timer - 20) / 20 : 1 - b.timer / 20;
   // щит (пунктир) — когда босс неуязвим
   if (d.shield.includes(b.state)) {
     ctx.fillStyle = frame % 8 < 4 ? LV.accent : LV.accent2;
@@ -878,6 +1205,7 @@ function drawBoss() {
     for (let i = o; i < h; i += 3) { ctx.fillRect(x0, y0 + i, 1, 1); ctx.fillRect(x0 + w, y0 + i, 1, 1); }
   }
   ctx.drawImage(img, bx, by);
+  ctx.globalAlpha = 1;
 }
 function wardenFrame() {
   const b = boss, S = A.boss;
@@ -904,6 +1232,20 @@ function rootmindFrame() {
     case 'open': case 'recoil': img = S.open[Math.floor(b.t / 10) % 2]; break;
     case 'dying': img = S.open[Math.floor(b.t / 4) % 2]; break;
     default: img = S.walk[Math.floor(b.t / 8) % 2];   // stalk / close
+  }
+  return (b.flash > 0 && b.flash % 4 < 2) ? S.flash : img;
+}
+function sovereignFrame() {
+  const b = boss, S = A.boss3;
+  let img;
+  switch (b.state) {
+    case 'idle': img = S.dormant[0]; break;
+    case 'wake': img = S.dormant[Math.floor(b.t / 6) % 2]; break;
+    case 'tell': img = S.aim[Math.floor(b.t / 3) % 2]; break;
+    case 'beam': img = S.cast[Math.floor(b.t / 3) % 2]; break;
+    case 'vent': case 'recoil': img = S.open[Math.floor(b.t / 10) % 2]; break;
+    case 'dying': img = S.open[Math.floor(b.t / 4) % 2]; break;
+    default: img = S.hover[Math.floor(b.t / 8) % 2];   // blink / volley / close
   }
   return (b.flash > 0 && b.flash % 4 < 2) ? S.flash : img;
 }
@@ -972,6 +1314,8 @@ window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy,
   cells: ents.cells.filter(c => c.taken).length, drones: ents.drones.filter(d => d.alive).length,
   crawlers: ents.crawlers.filter(c => c.alive).length, turrets: ents.turrets.filter(t => t.alive).length,
   crumbles: ents.crumbles.map(c => c.st), frame, jumping: P.jumping, coyote: P.coyote, jbuf: P.jbuf,
+  leapers: ents.leapers.filter(l => l.alive).length, seekers: ents.seekers.filter(k => k.alive).length,
+  presses: ents.presses.map(p => p.st), phase: [phaseStage(0), phaseStage(1)],
   mov: ents.movers.map(m => [Math.round(m.x), Math.round(m.y)]) });
 window.__keys = keys;
 

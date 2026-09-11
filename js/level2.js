@@ -64,6 +64,7 @@ const LEVEL2 = {
   boss: 'rootmind',
   bossName: 'ROOTMIND',
   bossHp: 4,
+  fx: { lift: ['#a8ff3d', '#ecfff2'], dust: ['#3d7053', '#1e3f2d', '#a8ff3d'] },
   checkpoints: [1, 21, 41, 61, 81, 101, 121, 141, 161, 181, 201, 221],
   map: L2_A.map((row, i) => row + L2_B[i]),
 };
