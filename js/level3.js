@@ -70,6 +70,6 @@ const LEVEL3 = {
   bossName: 'SOVEREIGN',
   bossHp: 5,
   fx: { lift: ['#3cc8ff', '#fff4ef'], dust: ['#5b4d66', '#32263c', '#ffb02e'] },
-  checkpoints: [1, 21, 41, 61, 81, 101, 121, 141, 161, 181, 200, 221],
+  checkpoints: [1, 21, 41, 61, 81, 101, 121, 141, 161, 183, 200, 221],
   map: L3_A.map((row, i) => row + L3_B[i]),
 };

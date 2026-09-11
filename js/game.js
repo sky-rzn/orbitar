@@ -201,7 +201,7 @@ function loadLevel(idx) {
         let minX = x, maxX = x;
         while (minX > 0 && !isStatic(minX - 1, y) && isStatic(minX - 1, y + 1) && x - minX < 5) minX--;
         while (maxX < LW - 1 && !isStatic(maxX + 1, y) && isStatic(maxX + 1, y + 1) && maxX - x < 5) maxX++;
-        ents.saws.push({ x: px, x0: px, y: py, minX: minX * T, maxX: maxX * T, dir: 1 }); break;
+        ents.saws.push({ x: px, y: py, minX: minX * T, maxX: maxX * T, dir: 1 }); break;
       }
       case 'j': ents.leapers.push({ x: px, y: py + 2, hx: px, hy: py + 2, vx: 0, vy: 0, dir: -1,
                                     st: 0, t: 50 + (x * 17) % 60, alive: true, home: true }); break;
@@ -210,8 +210,15 @@ function loadLevel(idx) {
     }
   }
   for (const col of LV.checkpoints) {
-    let row = 0; while (row < LH && ch(col, row) !== '#') row++;
-    checkpoints.push({ x: col * T + 3, y: row * T - 20, col });
+    let c = col, row = LH;
+    for (let d = 0; d < 8 && row === LH; d++) {   // колонка без пола: ищем ближайшую с твёрдой землёй
+      for (const cc of [col - d, col + d]) {
+        if (cc < 0 || cc >= LW) continue;         // ch() за краем карты врёт «#»
+        row = 0; while (row < LH && ch(cc, row) !== '#') row++;
+        if (row < LH) { c = cc; break; }
+      }
+    }
+    checkpoints.push({ x: c * T + 3, y: row * T - 20, col: c });
   }
   totalCells = ents.cells.length;
   ARENA = { left: (LW - 20) * T, trigger: (LW - 18) * T, floorY: 11 * T,
@@ -251,6 +258,7 @@ function reset(full) {
     ents.turrets.forEach(t => { t.alive = true; });
     cp = 0; elapsed = 0; intro = 180;
   }
+  const sp = full ? ents.spawn : checkpoints[cp];
   ents.turrets.forEach(t => { t.t = 0; });       // после возрождения турель даёт полный телеграф
   ents.crawlers = ents.crawlers.filter(c => c.home);
   for (const c of ents.crawlers) { c.alive = true; c.dir = -1; }
@@ -261,11 +269,13 @@ function reset(full) {
   ents.seekers = ents.seekers.filter(k => k.home);
   for (const k of ents.seekers) { k.alive = true; k.vx = 0; k.vy = 0; k.x = k.hx; k.y = k.hy; }
   for (const p of ents.presses) { p.st = 0; p.t = p.wait; p.y = p.y0; p.vy = 0; }
-  for (const q of ents.saws) { q.x = q.x0; q.dir = 1; }
+  for (const q of ents.saws) {                   // пила неуязвима — даём на реакцию всю рельсу
+    const far = Math.abs(q.minX - sp.x) >= Math.abs(q.maxX - sp.x) ? q.minX : q.maxX;
+    q.x = far; q.dir = far === q.minX ? 1 : -1;
+  }
   for (const c of ents.crumbles) { c.st = 0; c.t = 0; crumbleMask[c.ty * LW + c.tx] = 1; }
   if (full || boss.state !== 'dead') resetBoss(); // побеждённый босс не воскресает на чекпоинте
   shots = [];
-  const sp = full ? ents.spawn : checkpoints[cp];
   P = { x: sp.x, y: sp.y, vx: 0, vy: 0, w: 10, h: 20, face: 1, grounded: false, coyote: 0, jbuf: 0,
         animT: 0, onMover: null, squash: 0, jumping: false, lift: 0 };
   cam = { x: Math.max(0, Math.min(LEVEL_W - W, P.x - W / 2)) };
