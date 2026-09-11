@@ -25,14 +25,21 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
-// чит-коды: BOSS — на чекпоинт перед боссом, NEXT — сразу в следующий сектор
-const CHEATS = { BOSS: 'boss', NEXT: 'next' };
-const CHEAT_LEN = 4;
+// чит-коды: LVL1/LVL2 — в начало сектора, BOSS1/BOSS2 — к его боссу, NEXT — сразу в следующий сектор
+const CHEATS = {
+  LVL1: { lv: 0 }, LVL2: { lv: 1 },
+  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true },
+  NEXT: { next: true },
+};
+const CHEAT_CODES = Object.keys(CHEATS);
+const CHEAT_LEN = Math.max(...CHEAT_CODES.map(c => c.length));
 let cheatBuf = '', cheatMsg = 0, cheatText = '', cheatQueued = null;
 window.addEventListener('keydown', e => {
-  if (!/^Key[A-Z]$/.test(e.code) || e.repeat) return;
-  cheatBuf = (cheatBuf + e.code[3]).slice(-CHEAT_LEN);
-  if (CHEATS[cheatBuf]) { cheatQueued = CHEATS[cheatBuf]; cheatText = cheatBuf; cheatBuf = ''; }
+  const m = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code);
+  if (!m || e.repeat) return;
+  cheatBuf = (cheatBuf + (m[1] || m[2])).slice(-CHEAT_LEN);
+  const code = CHEAT_CODES.find(c => cheatBuf.endsWith(c));
+  if (code) { cheatQueued = CHEATS[code]; cheatText = code; cheatBuf = ''; }
 });
 const inp = {
   left: () => keys.ArrowLeft || keys.KeyA,
@@ -217,10 +224,12 @@ function nextLevel() {
   runTime += elapsed;
   startLevel(levelIdx + 1);
 }
-function warpToBossCheckpoint() {
-  if (state === 'win' || state === 'clear') return;
-  cp = checkpoints.length - 1;
-  reset(false);
+function cheatWarp(lv, toBoss) {
+  if (lv !== levelIdx || !toBoss) {                  // прыжок в другой сектор (и любой LVL) — сектор с нуля
+    if (lv === 0) { cellsBank = 0; runTime = 0; }    // с первого сектора забег начинается заново
+    startLevel(lv);
+  }
+  if (toBoss) { cp = checkpoints.length - 1; reset(false); }
   cam.x = Math.max(0, Math.min(LEVEL_W - W, P.x - W / 2)); // без плавного пролёта камеры через весь уровень
   intro = 0; cheatMsg = 150;
   spawnParticles(P.x + 5, P.y + 10, 30, ['#ff3fa8', '#22e5ff', '#e6ecff'], 2.5, 0.02, 30);
@@ -693,8 +702,8 @@ function update() {
   else if (state === 'clear') { if (inp.jumpPressed()) nextLevel(); }
   if (pressed.KeyR) { if (state === 'win') restartRun(); else reset(true); }
   if (cheatQueued) {
-    if (cheatQueued === 'boss') warpToBossCheckpoint();
-    else if (levelIdx < LEVELS.length - 1) { nextLevel(); cheatMsg = 150; }
+    if (cheatQueued.next) { if (levelIdx < LEVELS.length - 1) { nextLevel(); cheatMsg = 150; } }
+    else cheatWarp(Math.min(cheatQueued.lv, LEVELS.length - 1), cheatQueued.boss);
     cheatQueued = null;
   }
   if (cheatMsg > 0) cheatMsg--;
