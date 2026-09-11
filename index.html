@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>ORBITAR — 16-bit platformer demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #07070f; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center;
+         font-family: "Courier New", monospace; color: #8fa3c7; }
+  #wrap { position: relative; line-height: 0; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block;
+           box-shadow: 0 0 40px #0a2a3a, 0 0 0 4px #141a2e; }
+  #scan { position: absolute; inset: 0; pointer-events: none; display: none;
+          background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.18) 2px 3px); }
+  #help { margin-top: 12px; font-size: 13px; letter-spacing: 1px; text-align: center; line-height: 1.6; }
+  #help b { color: #22e5ff; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="320" height="224"></canvas>
+    <div id="scan"></div>
+  </div>
+  <div id="help">
+    <b>←/→</b> или <b>A/D</b> — бег &nbsp; <b>Z</b>/<b>Space</b>/<b>↑</b> — прыжок (держи дольше — выше) &nbsp;
+    <b>R</b> — рестарт &nbsp; <b>C</b> — scanlines<br>
+    Два сектора: <b>SECTOR 7</b> → <b>SECTOR 12</b>. Между ними — <b>Z</b> для перехода.
+  </div>
+  <script src="js/assets.js"></script>
+  <script src="js/level.js"></script>
+  <script src="js/level2.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
