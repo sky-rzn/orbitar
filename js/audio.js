@@ -1272,7 +1272,7 @@ const TRACKS = {
     },
   },
 
-  armada: {                                      // NOVA ARMADA — невесомый галоп в F#m
+  armada: {                                      // INVERTED ORBIT — невесомый галоп в F#m
     bpm: 168,
     vol: { gtr: 0.62, bass: 0.66, lead: 0.5, drum: 0.55 },
     order: ['intro', 'verse', 'verse2', 'pre', 'chorus', 'interlude', 'verse2',
