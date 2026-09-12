@@ -287,6 +287,14 @@ const DEFS = {
     noise({ t0: t, kind: 'lfsr', filter: 'highpass', f: 3000, dur: 0.1, vol: 0.06 * o.v, pan: o.pan });
   },
   drop: (t, o) => blip({ t0: t, wave: 'p25', f: 900, f2: 300, dur: 0.18, vol: 0.1 * o.v, pan: o.pan }),
+  charge: (t, o) => {                                // взвесь копит заряд под игроком
+    blip({ t0: t, wave: 'p12', f: 240, f2: 1500, gl: 0.85, dur: 0.5, vol: 0.07 * o.v, pan: o.pan });
+    noise({ t0: t, kind: 'lfsr', filter: 'bandpass', f: 900, f2: 3600, q: 2.6, dur: 0.5, vol: 0.05 * o.v, pan: o.pan });
+  },
+  zap: (t, o) => {                                   // разряд ударил снизу вверх
+    fm({ t0: t, f: 1600, f2: 180, ratio: 2.9, index: 9, idxDecay: 0.4, dur: 0.26, vol: 0.17 * o.v, wave: 'square', pan: o.pan, echo: true });
+    noise({ t0: t, kind: 'white', filter: 'highpass', f: 3400, f2: 1400, dur: 0.22, vol: 0.13 * o.v, pan: o.pan });
+  },
   jet: (t, o) => {                                   // столб стужи бьёт вверх
     noise({ t0: t, kind: 'white', filter: 'bandpass', f: 300, f2: 4200, q: 1.3, dur: 0.6, vol: 0.2 * o.v, pan: o.pan });
     fm({ t0: t, f: 120, f2: 380, ratio: 1.02, index: 8, idxDecay: 0.5, dur: 0.55, vol: 0.2 * o.v, wave: 'sine', pan: o.pan });

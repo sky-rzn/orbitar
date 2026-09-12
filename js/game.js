@@ -236,9 +236,7 @@ function loadLevel(idx) {
       case 'Y': {                                  // сталактит: считаем, докуда ему падать
         let yy = y + 1;
         while (yy < LH && !isStatic(x, yy)) yy++;
-        // сосульки в шахте босса срывает не игрок, а столб стужи — и падают они на колосса
-        ents.icicles.push({ x: px, y: py, y0: py, hitY: yy * T, vy: 0, st: 0, t: 0,
-                            arena: !!(LV.arena && y >= LV.arena.top) }); break;
+        ents.icicles.push({ x: px, y: py, y0: py, hitY: yy * T, vy: 0, st: 0, t: 0 }); break;
       }
       case 'G': case 'g': {                        // раструб пурги: полоса до первой стены
         const dir = c === 'G' ? 1 : -1;
@@ -316,7 +314,7 @@ const bossBox = () => bossRect('box');
 function resetBoss() {
   const kind = LV.boss, d = BOSS_BOX[kind];
   boss = { kind, state: 'idle', hp: LV.bossHp, t: 0, timer: 0, boltT: 0, flash: 0, vy: 0, dir: -1,
-           orb: null, anchorX: 0, sweep: 0, jetX: 0, flood: ARENA.floorY,
+           orb: null, anchorX: 0, sweep: 0, jetX: 0, arc: null, arcT: 0, flood: ARENA.floorY,
            x: ARENA.vert ? Math.round((ARENA.xMin + ARENA.xMax) / 2) : (LW - 10) * T + 8,
            y: ARENA.floorY - d.h + (ARENA.vert ? 14 : 0) };
   shots = []; waves = [];
@@ -524,20 +522,11 @@ function updateGusts() {
   }
 }
 
-// Сталактит срывается, когда под ним проходят: трещит, падает, разбивается, отрастает.
-// Сосульки в шахте босса — исключение: их срывает столб стужи (см. hoarCrack), и летят они
-// не в пустоту, а на голову колоссу; до пола такая не долетает — тонет в криовзвеси.
-const icicleSpike = i => ({ x: i.x + 5, y: i.y + 1, w: 6, h: 14 });
-function shatterIcicle(i, atY) {
-  i.st = 3; i.t = ICICLE.back; i.vy = 0;
-  if (!onScreen(i.x, i.y)) return;
-  snd('shatter', i.x);
-  spawnParticles(i.x + 8, atY - 5, 14, ['#f0ffff', '#a5d8e2', ...LV.fx.lift], 2.6, 0.16, 28);
-}
+// Сталактит срывается, когда под ним проходят: трещит, падает, разбивается, отрастает
 function updateIcicles() {
   for (const i of ents.icicles) {
     if (i.st === 0) {
-      if (!i.arena && state === 'play' && P.y + P.h > i.y + T && onScreen(i.x, i.y) &&
+      if (state === 'play' && P.y + P.h > i.y + T && onScreen(i.x, i.y) &&
           P.x + P.w > i.x - ICICLE.reach && P.x < i.x + T + ICICLE.reach) {
         i.st = 1; i.t = ICICLE.warn; snd('crack', i.x);
       }
@@ -546,12 +535,13 @@ function updateIcicles() {
     } else if (i.st === 2) {
       i.vy = Math.min(ICICLE.maxFall, i.vy + ICICLE.grav);
       i.y += i.vy;
-      // попадание в броню колосса — такое же деление, как прыжок на раскрытую корону
-      if (i.arena && bossActive() && boss.state !== 'dying' && overlap(icicleSpike(i), bossBox())) {
-        shatterIcicle(i, i.y + T); hitBoss(false); continue;
+      if (i.y + T >= i.hitY) {
+        i.st = 3; i.t = ICICLE.back;
+        if (onScreen(i.x, i.y)) {
+          snd('shatter', i.x);
+          spawnParticles(i.x + 8, i.hitY - 5, 14, ['#f0ffff', '#a5d8e2', ...LV.fx.lift], 2.6, 0.16, 28);
+        }
       }
-      const land = i.arena ? Math.min(i.hitY, Math.round(boss.flood)) : i.hitY;
-      if (i.y + T >= land) shatterIcicle(i, land);
     } else if (--i.t <= 0) { i.st = 0; i.y = i.y0; i.vy = 0; }
   }
 }
@@ -736,7 +726,7 @@ function updatePlayer() {
   for (const m of ents.melt) if (overlap(hit, { x: m.x, y: m.y + (m.top ? 5 : 0), w: T, h: m.top ? T - 5 : T })) die();
   for (const r of ents.rifts) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 4 : 0), w: T, h: r.top ? T - 4 : T })) die();
   for (const r of ents.cryos) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 5 : 0), w: T, h: r.top ? T - 5 : T })) die();
-  for (const i of ents.icicles) if (i.st === 2 && overlap(hit, icicleSpike(i))) die();
+  for (const i of ents.icicles) if (i.st === 2 && overlap(hit, { x: i.x + 5, y: i.y + 1, w: 6, h: 14 })) die();
   for (const h of ents.howlers) if (overlap(hit, { x: h.x + 2, y: h.y + 2, w: 12, h: 12 })) die();
   for (const p of ents.presses) if (overlap(hit, { x: p.x + 1, y: p.y, w: 14, h: 16 })) die();
   for (const q of ents.saws) if (overlap(hit, { x: q.x + 2, y: q.y + 2, w: 12, h: 12 })) die();
@@ -969,9 +959,10 @@ function bossHazards(hit) {
   }
   for (const s of shots) if (overlap(hit, { x: s.x - s.r, y: s.y - s.r, w: s.r * 2, h: s.r * 2 })) die();
   for (const w of waves) if (overlap(hit, { x: w.x - 4, y: ARENA.floorY - 7, w: 8, h: 7 })) die();
-  if (b.kind === 'hoarfrost' && bossActive()) {                     // взвесь и столб стужи
+  if (b.kind === 'hoarfrost' && bossActive()) {                     // взвесь, столб стужи и разряд
     if (P.y + P.h > b.flood + 3) die();
     if (b.state === 'erupt' && overlap(hit, hoarJet())) die();
+    if (b.arc && b.arc.st === 1 && overlap(hit, hoarArc())) die();
   }
   if (b.kind === 'sovereign' && b.orb) {                            // осколок: сверху — отбить, сбоку — отброс
     const o = b.orb;
@@ -993,6 +984,7 @@ function hitBoss(bounce = true) {
   if (bounce) { P.vy = -5; P.jumping = false; }        // корону бьёт её же осколок — игрока не подбрасывает
   if (b.kind === 'hoarfrost') b.flood = Math.min(ARENA.floorY, b.flood + FLOOD.drain); // взвесь отступает
   spawnParticles(b.x + bossDef().w / 2, b.y + 4, 24, ['#4dff88', '#e6ecff', '#ffe14a'], 3, 0.1, 30);
+  b.arc = null;                                        // сбитое деление гасит копящийся разряд
   if (b.hp <= 0) { b.state = 'dying'; b.timer = 120; shots = []; waves = []; b.orb = null; }
   else { b.state = 'recoil'; b.timer = 45; }
 }
@@ -1397,11 +1389,13 @@ function updateSovereign() {
 //  намечается в начале наводки и дальше не следует за игроком: разметка — честное
 //  предупреждение, у которого есть ответ, а не приговор. После столба
 //  он выдыхается и раскрывает корону: вот тогда на макушку и надо спрыгнуть.
-//  Второй способ пробить деление — его собственный столб: он выламывает сосульки
-//  из-под верхней платформы, и они падают колоссу на броню. Колонну выбирает игрок,
-//  так что это плата за риск постоять над колоссом в той самой колонне.
+//  Со второго деления взвесь под ним копит заряд и бьёт молнией снизу вверх по колонне,
+//  где стоит игрок: на карнизе больше не отсидеться, двигаться приходится и между столбами.
 //  Каждое деление сбрасывает взвесь на три тайла — воздух выигрывается попаданиями.
 const HOAR = { swim: 200, aim: 54, erupt: 66, spent: 155, jetW: 30 };
+const ARC = { warn: 48, on: 14, every: 210, w: 10 };  // разряд взвеси: заряд, вспышка, пауза
+const hoarArc = () => ({ x: boss.arc.x - ARC.w / 2, y: ARENA.top, w: ARC.w,
+                         h: Math.max(0, boss.flood - ARENA.top) });
 const hoarTop = () => boss.flood - BOSS_BOX.hoarfrost.h + 14;    // по пояс во взвеси
 const hoarJet = () => ({ x: boss.jetX - HOAR.jetW / 2, y: ARENA.top,
                          w: HOAR.jetW, h: Math.max(0, boss.flood - ARENA.top) });
@@ -1419,29 +1413,31 @@ function fireHail() {                                 // веер ледяных
   snd('hail', sx);
   spawnParticles(sx, sy, 6, ['#7fe9f5', '#eaffff'], 1.6, 0, 14);
 }
-// Столб стужи бьёт в свод арены и выламывает из-под верхней платформы сосульки:
-// колонна выбрана игроком, так что это его ответный ход — заманить столб туда,
-// где над колоссом висит лёд, и успеть уйти вбок из-под обеих напастей.
-function hoarCrack() {
-  const j = hoarJet();
-  let cracked = 0;
-  for (const i of ents.icicles) {
-    if (!i.arena || i.st !== 0 || i.x + T <= j.x || i.x >= j.x + j.w) continue;
-    i.st = 1; i.t = ICICLE.warn; cracked++;
-  }
-  if (cracked) snd('crack', j.x + j.w / 2);
+// Разряд: криовзвесь копит заряд под игроком и бьёт молнией вверх по всей колонне.
+// Столб стужи сгоняет с карниза вбок — разряд не даёт на карнизе отсидеться. Колонна,
+// как и у столба, намечается в начале заряда и дальше за игроком не ездит.
+function hoarArcStart() {
+  boss.arc = { x: Math.round(clamp(P.x + P.w / 2, ARENA.left + 6, LEVEL_W - 6)), st: 0, t: ARC.warn };
+  snd('charge', boss.arc.x);
 }
-function hoarShardFall() {                            // сосульки с потолка арены, вразнобой
-  const x = ARENA.left + 28 + Math.random() * (LEVEL_W - 56 - ARENA.left);
-  shots.push({ x, y: ARENA.top + 10, vx: 0, vy: 1.2, g: 0.11, r: 3, life: 320,
-               cols: ['#09202f', '#7fe9f5', '#eaffff'] });
-  snd('drop', x);
+function updateHoarArc() {
+  const a = boss.arc;
+  if (!a) return;
+  if (a.st === 0 && frame % 5 === 0)
+    spawnParticles(a.x, boss.flood - 2, 2, ['#ffd76b', '#eaffff'], 1.2, -0.08, 30);
+  if (--a.t > 0) return;
+  if (a.st === 0) {
+    a.st = 1; a.t = ARC.on; shake = 4; snd('zap', a.x);
+    spawnParticles(a.x, boss.flood - 4, 12, ['#ffe14a', '#eaffff', '#7fe9f5'], 2.6, -0.04, 26);
+  } else boss.arc = null;
 }
 
 function updateHoarfrost() {
   const b = boss, rage = bossRage();
   const floodTop = ARENA.top + 5 * T;                  // выше взвесь не поднимается — воздух остаётся всегда
   if (bossActive() && b.state !== 'dying') b.flood = Math.max(floodTop, b.flood - FLOOD.rise);
+  updateHoarArc();
+  if (b.arcT > 0) b.arcT--;
   switch (b.state) {
     case 'idle':
       if (state === 'play' && P.y >= ARENA.trigger) { bossAwake(); b.timer = 110; }
@@ -1456,7 +1452,8 @@ function updateHoarfrost() {
       b.x += clamp((tx - b.x) * 0.03, -0.6, 0.6);
       b.y = hoarTop() + Math.sin(b.t / 20) * 2;
       if (--b.boltT <= 0) { fireHail(); b.boltT = 92 - rage * 10; }
-      if (rage >= 2 && b.t % (150 - rage * 14) === 0) hoarShardFall();
+      // со второго деления взвесь бьёт разрядом — и делает это тем чаще, чем он злее
+      if (rage >= 1 && !b.arc && b.arcT <= 0) { hoarArcStart(); b.arcT = ARC.every - rage * 26; }
       if (--b.timer <= 0) {
         b.state = 'aim'; b.timer = HOAR.aim - rage * 3; b.jetX = hoarColumn(); snd('tell', b.x);
       }
@@ -1466,10 +1463,7 @@ function updateHoarfrost() {
       b.y = hoarTop() + (frame % 2);
       if (b.timer % 6 === 0)
         spawnParticles(b.jetX, b.flood - 4, 4, ['#7fe9f5', '#eaffff'], 2, -0.06, 20);
-      if (--b.timer <= 0) {
-        b.state = 'erupt'; b.timer = HOAR.erupt + rage * 6; snd('jet', b.jetX); shake = 6;
-        hoarCrack();                                   // столб вырывает лёд из свода над собой
-      }
+      if (--b.timer <= 0) { b.state = 'erupt'; b.timer = HOAR.erupt + rage * 6; snd('jet', b.jetX); shake = 6; }
       break;
     case 'erupt':                                      // столб стужи до самого потолка
       b.y = hoarTop();
@@ -1806,6 +1800,27 @@ function draw() {
     }
   }
 
+  if (boss.kind === 'hoarfrost' && boss.arc) {          // разряд взвеси: заряд и сама молния
+    const a = boss.arc, y0 = ARENA.top, y1 = Math.round(boss.flood);
+    if (a.st === 0) {                                  // заряд бежит по колонне снизу вверх
+      ctx.fillStyle = '#ffd76b';
+      for (let y = y1 - (frame * 4) % 12; y > y0; y -= 12) ctx.fillRect(a.x - 1, y, 2, 5);
+      if (frame % 4 < 2) { ctx.fillStyle = '#ffe14a'; ctx.fillRect(a.x - 3, y1 - 3, 6, 3); }
+    } else {                                           // молния: зигзаг от взвеси до потолка
+      let prev = 0;
+      for (let y = y1; y > y0; y -= 4) {
+        const off = Math.round(Math.sin(y * 0.9 + frame * 1.7) * 3);
+        ctx.fillStyle = '#7fe9f5'; ctx.fillRect(a.x + off - 2, y - 4, 4, 4);
+        ctx.fillStyle = frame % 2 ? '#eaffff' : '#fff9d6'; ctx.fillRect(a.x + off - 1, y - 4, 2, 4);
+        if (y < y1) {                                  // перемычка между коленами зигзага
+          const lo = Math.min(prev, off), hi = Math.max(prev, off);
+          if (hi > lo) { ctx.fillStyle = '#eaffff'; ctx.fillRect(a.x + lo, y - 1, hi - lo, 2); }
+        }
+        prev = off;
+      }
+    }
+  }
+
   // энергобарьер арены: у вертикальной шахты он не сбоку, а над головой
   if (bossActive()) {
     if (ARENA.vert) {
@@ -2055,7 +2070,8 @@ function drawHud() {
 window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
   boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y),
           orb: boss.orb && { x: Math.round(boss.orb.x), y: Math.round(boss.orb.y), mode: boss.orb.mode,
-                             life: boss.orb.life, cool: boss.orb.cool, inColumn: sovInColumn(boss.orb.x) } },
+                             life: boss.orb.life, cool: boss.orb.cool, inColumn: sovInColumn(boss.orb.x) },
+          arc: boss.arc && { x: boss.arc.x, st: boss.arc.st, t: boss.arc.t } },
   shots: shots.map(s => [Math.round(s.x), Math.round(s.y)]), waves: waves.map(w => Math.round(w.x)),
   cells: ents.cells.filter(c => c.taken).length, drones: ents.drones.filter(d => d.alive).length,
   crawlers: ents.crawlers.filter(c => c.alive).length, turrets: ents.turrets.filter(t => t.alive).length,
