@@ -2493,7 +2493,7 @@ function drawHud() {
 }
 
 // отладочный доступ к состоянию (для автотестов)
-window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
+window.__dbg = () => ({ level: levelIdx + 1, lw: LW, lh: LH, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
   boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y),
           plane: boss.plane,
           orb: boss.orb && { x: Math.round(boss.orb.x), y: Math.round(boss.orb.y), mode: boss.orb.mode,

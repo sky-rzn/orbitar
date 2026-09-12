@@ -67,6 +67,8 @@ function boot(hash = '', seed = 0) {
   const api = {
     win,
     dbg: () => win.__dbg(),
+    // чтение того, что объявлено в контексте вне IIFE движка (карты уровней)
+    eval: expr => vm.runInContext(expr, ctx),
     key(code, down) {
       const e = { code, repeat: false, preventDefault() {} };
       for (const f of listeners[down ? 'keydown' : 'keyup']) f(e);

@@ -1,5 +1,7 @@
 // Проверка проходимости карты симуляцией физики движка: BFS по клеткам,
 // где игрок может стоять (с учётом направления тяги), с перебором планов ввода.
+//   node tools/reach.js <уровень> [файл-узлов] [колонка старта] [колонка стопа]
+// Отрезок от чекпоинта до чекпоинта считается за минуты, вся карта — за час.
 'use strict';
 const { boot } = require('./harness');
 
@@ -7,6 +9,7 @@ const T = 16, LIMIT = 120;
 const lv = +(process.argv[2] || 5);
 const g = boot('#lv=' + lv);
 
+const LW = g.dbg().lw;                         // ширина карты — у уровней она разная
 const key = (c, r, d) => c + ',' + r + ',' + d;
 const nodeOf = st => {
   if (!st.grounded) return null;
@@ -54,7 +57,9 @@ function runPlan(n, p, seen, add) {
   }
 }
 
-const start = { c: 4, r: 11, d: 1 };
+const from = process.argv[4] === undefined ? null : +process.argv[4];
+const stop = process.argv[5] === undefined ? LW : +process.argv[5];
+const start = from === null ? { c: 4, r: 11, d: 1 } : { c: from, r: 11, d: 1 };
 const seen = new Set([key(start.c, start.r, start.d)]);
 const queue = [start];
 const parent = new Map();
@@ -62,6 +67,7 @@ let head = 0, best = 0;
 const t0 = Date.now();
 while (head < queue.length) {
   const n = queue[head++];
+  if (n.c > stop) continue;                    // за границу отрезка не уходим
   for (const p of PLANS) {
     runPlan(n, p, seen, nd => { queue.push(nd); parent.set(key(nd.c, nd.r, nd.d), n); });
   }
@@ -74,5 +80,6 @@ for (const k of seen) { const [c, r, d] = k.split(',').map(Number); (cols[c] = c
 const list = Object.keys(cols).map(Number).sort((a, b) => a - b);
 console.log('колонки:', list[0], '..', list[list.length - 1]);
 const miss = [];
-for (let c = 0; c < 240; c++) if (!cols[c]) miss.push(c);
+for (let c = from === null ? 0 : from; c <= Math.min(stop, LW - 1); c++) if (!cols[c]) miss.push(c);
 console.log('недостижимые колонки:', miss.length ? miss.join(',') : 'нет');
+if (process.argv[3]) require('fs').writeFileSync(process.argv[3], [...seen].join('\n'));   // узлы для разбора
