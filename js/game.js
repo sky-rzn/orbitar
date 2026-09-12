@@ -952,6 +952,11 @@ function fireRegalia() {                                 // редкие иск�
   snd('lance', c.x);
   spawnParticles(c.x, c.y + 14, 5, ['#ffb02e', '#ff5a7a'], 1.4, 0.02, 12);
 }
+// осколки с потолка сыплются вразнобой по всей арене, а не на голову игроку
+const sovDropX = () => {
+  const lo = ARENA.left + 28, hi = LEVEL_W - 40;
+  return lo + Math.random() * (hi - lo);
+};
 function dropShard(x) {                                  // осколок пустоты с потолка
   shots.push({ x, y: 6, vx: 0, vy: 1.2, g: 0.1, r: 3, life: 300, cols: ['#2e1358', '#7a3cff', '#dcbcff'] });
   snd('drip', x);
@@ -1074,7 +1079,7 @@ function updateSovereign() {
       b.x += clamp((tx - b.x) * 0.02, -0.75, 0.75);
       b.y += clamp(SOV.top + Math.sin(b.t / 22) * 4 - b.y, -0.7, 0.7);
       if (--b.boltT <= 0) { fireRegalia(); b.boltT = 78 - rage * 8; }
-      if (rage >= 3 && b.t % 110 === 0) dropShard(clamp(P.x + 4, ARENA.left + 28, LEVEL_W - 40));
+      if (rage >= 3 && b.t % 110 === 0) dropShard(sovDropX());
       if (--b.timer <= 0) {                                                // выбирает трон подальше от игрока
         let tx2 = b.x;
         for (let i = 0; i < 14; i++) {
@@ -1098,8 +1103,7 @@ function updateSovereign() {
     case 'tether':                                                         // привязь: корона стоит, осколок охотится
       if (!b.orb) { sovCurtain(); break; }                                 // страховка от зависания без осколка
       b.y = SOV.throne + Math.sin(b.t / 18) * 1.5;
-      if (rage >= 2 && b.t % (104 - rage * 12) === 0)
-        dropShard(clamp(P.x + 4 + (Math.random() * 40 - 20), ARENA.left + 28, LEVEL_W - 40));
+      if (rage >= 2 && b.t % (104 - rage * 12) === 0) dropShard(sovDropX());
       break;
     case 'curtain': {                                                      // занавес осколков метёт арену
       b.y += clamp(SOV.top + 6 - b.y, -1.4, 1.4);
