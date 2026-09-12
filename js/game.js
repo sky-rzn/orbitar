@@ -50,6 +50,7 @@ const inp = {
   right: () => keys.ArrowRight || keys.KeyD,
   jump: () => keys.KeyZ || keys.Space || keys.ArrowUp || keys.KeyW,
   jumpPressed: () => pressed.KeyZ || pressed.Space || pressed.ArrowUp || pressed.KeyW,
+  downPressed: () => pressed.ArrowDown || pressed.KeyS,
 };
 
 // ---------- битмап-шрифт 3x5 ----------
@@ -92,10 +93,22 @@ function isSolid(x, y) {
 }
 const isStatic = (x, y) => STATIC.includes(ch(x, y));
 const isOneWay = (x, y) => ch(x, y) === '-';
+// под ногами только решётка (твёрдой опоры рядом нет) — с такой можно спрыгнуть вниз
+function onOneWay() {
+  const ty = Math.floor((P.y + P.h + EPS) / T);
+  const x1 = Math.floor(P.x / T), x2 = Math.floor((P.x + P.w - EPS) / T);
+  let grate = false;
+  for (let tx = x1; tx <= x2; tx++) {
+    if (isSolid(tx, ty)) return false;
+    if (isOneWay(tx, ty)) grate = true;
+  }
+  return grate;
+}
 
 const PHYS = { accel: 0.22, maxSpeed: 1.7, friction: 0.28, airAccel: 0.16, gravity: 0.24, maxFall: 5.2, jump: -5.3, jumpCut: -1.8, spring: -7.6, coyote: 6, buffer: 6,
                iceAccel: 0.075, iceFriction: 0.014,          // наледь: разгон вязкий, торможения почти нет
-               wallSlide: 0.95, wallJump: -5.0, wallKick: 2.3, wallLock: 9 };
+               wallSlide: 0.95, wallJump: -5.0, wallKick: 2.3, wallLock: 9,
+               dropOff: 0.9 };                   // толчок вниз при спрыгивании с решётки
 const CRUMBLE = { hold: 42, gone: 150 };     // кадров под ногами / до восстановления
 const SEEK_CALM = 60;                        // после возрождения искатель секунду висит дома
 const GATE = { period: 170, warn: 90, on: 110 }; // цикл затвора: выкл → предупреждение → луч
@@ -341,7 +354,7 @@ function reset(full) {
   if (full || boss.state !== 'dead') resetBoss(); // побеждённый босс не воскресает на чекпоинте
   shots = [];
   P = { x: sp.x, y: sp.y, vx: 0, vy: 0, w: 10, h: 20, face: 1, grounded: false, coyote: 0, jbuf: 0,
-        animT: 0, onMover: null, squash: 0, jumping: false, lift: 0, wall: 0, lock: 0, gust: 0 };
+        animT: 0, onMover: null, squash: 0, jumping: false, lift: 0, wall: 0, lock: 0, gust: 0, dropRow: -1 };
   cam = { x: clamp(P.x - W / 2, 0, LEVEL_W - W), y: clamp(P.y - H / 2, 0, LEVEL_H - H) };
   particles = [];
   state = 'play'; deadTimer = 0; shake = 0;
@@ -423,7 +436,7 @@ function moveY(dy) {
   if (dy > 0) {
     const ty = Math.floor((P.y + P.h) / T);
     for (let tx = x1; tx <= x2; tx++) {
-      if (isSolid(tx, ty) || (isOneWay(tx, ty) && prevBottom <= ty * T + 0.01)) {
+      if (isSolid(tx, ty) || (isOneWay(tx, ty) && ty !== P.dropRow && prevBottom <= ty * T + 0.01)) {
         P.y = ty * T - P.h; P.vy = 0; P.grounded = true; break;
       }
     }
@@ -603,6 +616,8 @@ function updatePlayer() {
   if (P.onMover) { P.x += P.onMover.dx; P.y += P.onMover.dy; }
 
   const wasGrounded = P.grounded;
+  // провал сквозь решётку длится, пока её ряд не останется выше макушки
+  if (P.dropRow >= 0 && (P.grounded || P.y >= (P.dropRow + 1) * T)) P.dropRow = -1;
   // горизонталь; на наледи разгон вязкий, а тормозить почти нечем
   const icy = P.grounded && onIce();
   const ax = P.grounded ? (icy ? PHYS.iceAccel : PHYS.accel) : PHYS.airAccel;
@@ -629,6 +644,15 @@ function updatePlayer() {
     spawnParticles(P.x + (P.wall > 0 ? 10 : 0), P.y + 12, 7, LV.fx.lift, 1.8, 0.05, 18);
     P.wall = 0;
   }
+  // «вниз» на односторонней решётке — проваливаемся сквозь неё
+  if (P.grounded && !P.onMover && inp.downPressed() && onOneWay()) {
+    P.dropRow = Math.floor((P.y + P.h + EPS) / T);
+    P.grounded = false; P.coyote = 0; P.jbuf = 0; P.jumping = false;
+    P.vy = Math.max(P.vy, PHYS.dropOff);
+    SFX.play('land');
+    spawnParticles(P.x + 5, P.y + P.h, 4, ['#6c7aa6', '#aab4d4'], 1.1, 0.05, 10);
+  }
+
   if (P.jumping && !inp.jump() && P.vy < PHYS.jumpCut) P.vy = PHYS.jumpCut; // переменная высота
   if (P.vy >= 0) P.jumping = false;
 
