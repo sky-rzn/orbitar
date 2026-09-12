@@ -101,6 +101,36 @@ const PAL = {
   b4: '#2a3a8a',
   V4: '#14293d', // фон-синь
   v4: '#2d5a7a',
+  // ---- сдвиг палитры (NOVA ARMADA — флот в открытом космосе) ----
+  //  тот же язык «неон по тёмному металлу», но металл — обшивка из потемневшей
+  //  бронзы, неон — аквамариновая патина, подсветка антиграва — фиалка-электрик,
+  //  кристаллы — розовый кварц, опасность — метеорный поток вместо ям и расплава.
+  K5: '#08060e', // почти чёрный (космос)
+  D5: '#191024', // сумрак
+  d5: '#33231f', // тёмная бронза
+  M5: '#6b4630', // бронза (обшивка)
+  m5: '#a3743f', // светлая латунь
+  W5: '#e3b071', // блик латуни
+  w5: '#fff3e2', // белый (тёплый)
+  C5: '#2ef0c4', // неон-аквамарин
+  c5: '#0b7a6a', // тёмный аквамарин
+  P5: '#8f7dff', // фиалка-электрик
+  p5: '#3b2f8a', // тёмная фиалка
+  Y5: '#ffd166', // тёплое золото (телеграф)
+  O5: '#ff8a3c', // оранжевый
+  o5: '#a8471a',
+  G5: '#ff7bd5', // розовый кварц
+  g5: '#8a2a70', // тёмный кварц
+  B5: '#7a6bff', // энергия портала
+  b5: '#2a2470',
+  V5: '#1b1430', // фон-фиолет
+  v5: '#3a2b5c',
+  // метеорный поток (только пятый уровень, без подмены по теме)
+  S0: '#140a06', // сердцевина камня
+  S1: '#2b1509', // толща потока
+  S2: '#8a3c14', // раскалённый след
+  S3: '#ff8a3c', // край
+  S4: '#ffe0a8', // искры
   // криовзвесь (только четвёртый уровень, без подмены по теме)
   Q0: '#040e18', // сердцевина
   Q1: '#09202f', // толща
@@ -145,7 +175,18 @@ const TH_GLACIAL = {
   G: 'G4', g: 'g4',   // кристаллы → ледяные друзы
   B: 'B4', b: 'b4', V: 'V4', v: 'v4',
 };
-const THEMES = [TH_FOUNDRY, TH_REACTOR, TH_CITADEL, TH_GLACIAL];
+// Флот в открытом космосе: обшивка выгорает в потемневшую бронзу, неон уходит
+// в аквамариновую патину, подсветка антиграва — в фиалку; красный по-прежнему
+// значит только опасность.
+const TH_ARMADA = {
+  K: 'K5', D: 'D5', d: 'd5', M: 'M5', m: 'm5', W: 'W5', w: 'w5',
+  C: 'C5', c: 'c5',   // неоновая кромка грунта — аквамарин
+  P: 'P5', p: 'p5',   // подсветка антиграв-платформ — фиалка
+  Y: 'Y5', O: 'O5', o: 'o5',
+  G: 'G5', g: 'g5',   // кристаллы → друзы розового кварца
+  B: 'B5', b: 'b5', V: 'V5', v: 'v5',
+};
+const THEMES = [TH_FOUNDRY, TH_REACTOR, TH_CITADEL, TH_GLACIAL, TH_ARMADA];
 
 const TILE = 16;
 
@@ -587,6 +628,170 @@ const HOWLER = [
 ];
 
 // ------------------------------------------------------------
+//  ОРБИТЕР «ORBITER» 12x12, 2 кадра — спутник-дрон: ходит по кругу
+//  вокруг своего якоря, гибнет от прыжка «ногами вперёд»
+// ------------------------------------------------------------
+const ORBITER = [
+  [
+    '....MMMM....',
+    '...MWWWWM...',
+    '..MWKKKKWM..',
+    'dCMWKCCKWMCd',
+    'dCMWKCRKWMCd',
+    'dCMWKCCKWMCd',
+    '..MWKKKKWM..',
+    '...MWWWWM...',
+    '....MMMM....',
+    '.....dd.....',
+    '....C..C....',
+    '...C....C...',
+  ],
+  [
+    '....MMMM....',
+    '...MWWWWM...',
+    '..MWKKKKWM..',
+    'dCMWKCCKWMCd',
+    'dCMWKRCKWMCd',
+    'dCMWKCCKWMCd',
+    '..MWKKKKWM..',
+    '...MWWWWM...',
+    '....MMMM....',
+    '.....dd.....',
+    '...C....C...',
+    '..C......C..',
+  ],
+];
+
+// ------------------------------------------------------------
+//  ДРЕЙФ-МИНА «MINE» 12x12, 4 кадра — два покоя и два взведённых.
+//  Плывёт к игроку, вблизи мигает и лопается веером осколков;
+//  успеешь приземлиться сверху — расколешь до взрыва.
+// ------------------------------------------------------------
+const MINE = [
+  [
+    '.....MM.....',
+    '.M...WW...M.',
+    '.MM.MMMM.MM.',
+    '..MMWWWWMM..',
+    'MWWWKKKKWWWM',
+    'MWWKCcccKWWM',
+    'MWWKcCCcKWWM',
+    'MWWWKKKKWWWM',
+    '..MMWWWWMM..',
+    '.MM.MMMM.MM.',
+    '.M...WW...M.',
+    '.....MM.....',
+  ],
+  [
+    '.....MM.....',
+    '.M...WW...M.',
+    '.MM.MMMM.MM.',
+    '..MMWWWWMM..',
+    'MWWWKKKKWWWM',
+    'MWWKcCCcKWWM',
+    'MWWKCcccKWWM',
+    'MWWWKKKKWWWM',
+    '..MMWWWWMM..',
+    '.MM.MMMM.MM.',
+    '.M...WW...M.',
+    '.....MM.....',
+  ],
+  [
+    '.....YY.....',
+    '.Y...YY...Y.',
+    '.YM.MMMM.MY.',
+    '..MMWWWWMM..',
+    'MWWWKKKKWWWM',
+    'MWWKRRRRKWWM',
+    'MWWKRwwRKWWM',
+    'MWWWKKKKWWWM',
+    '..MMWWWWMM..',
+    '.YM.MMMM.MY.',
+    '.Y...YY...Y.',
+    '.....YY.....',
+  ],
+  [
+    '.....ww.....',
+    '.w...ww...w.',
+    '.wM.MMMM.Mw.',
+    '..MMWWWWMM..',
+    'MWWWKKKKWWWM',
+    'MWWKwwwwKWWM',
+    'MWWKwRRwKWWM',
+    'MWWWKKKKWWWM',
+    '..MMWWWWMM..',
+    '.wM.MMMM.Mw.',
+    '.w...ww...w.',
+    '.....ww.....',
+  ],
+];
+
+// ------------------------------------------------------------
+//  ДЕЛЕНЕЦ «SPLITTER» 14x14, 2 кадра — кристалл в раме: прыжок сверху
+//  не убивает его, а раскалывает на два осколка
+// ------------------------------------------------------------
+const SPLITTER = [
+  [
+    '.....MMMM.....',
+    '....MWWWWM....',
+    '...MWGGGGWM...',
+    '..MWGGwwGGWM..',
+    '.MWGGwGGwGGWM.',
+    'MWGGwGGGGwGGWM',
+    'MWGGGGRRGGGGWM',
+    'MWGGGGRRGGGGWM',
+    'MWGGwGGGGwGGWM',
+    '.MWGGwGGwGGWM.',
+    '..MWGGwwGGWM..',
+    '...MWGGGGWM...',
+    '....MWWWWM....',
+    '.....MMMM.....',
+  ],
+  [
+    '.....MMMM.....',
+    '....MWWWWM....',
+    '...MWGGGGWM...',
+    '..MWGGGGGGWM..',
+    '.MWGGGwwGGGWM.',
+    'MWGGGwGGwGGGWM',
+    'MWGGGGRRGGGGWM',
+    'MWGGGGRRGGGGWM',
+    'MWGGGwGGwGGGWM',
+    '.MWGGGwwGGGWM.',
+    '..MWGGGGGGWM..',
+    '...MWGGGGWM...',
+    '....MWWWWM....',
+    '.....MMMM.....',
+  ],
+];
+
+// ------------------------------------------------------------
+//  ОСКОЛОК ДЕЛЕНЦА «SHARD» 8x8, 2 кадра
+// ------------------------------------------------------------
+const SHARD = [
+  [
+    '..MMMM..',
+    '.MWGGWM.',
+    'MWGGGGWM',
+    'MWGRRGWM',
+    'MWGGGGWM',
+    '.MWGGWM.',
+    '..MMMM..',
+    '........',
+  ],
+  [
+    '..MMMM..',
+    '.MWGGWM.',
+    'MWGwwGWM',
+    'MWGRRGWM',
+    'MWGwwGWM',
+    '.MWGGWM.',
+    '..MMMM..',
+    '........',
+  ],
+];
+
+// ------------------------------------------------------------
 //  БОСС «WARDEN» 32x24 — композиция: люк + корпус + двигатели
 // ------------------------------------------------------------
 const BOSS_HATCH = {
@@ -846,6 +1051,62 @@ function boss4Sprite(eye, open, frame, mono) {
       }
     }
     q.p(cx - 4, 5, 'C'); q.p(cx + 3, 5, 'C'); q.r(cx - 1, 3, 2, 2, 'c');
+  }
+  return c;
+}
+
+// ------------------------------------------------------------
+//  БОСС «PULSAR» 40x40 — нейтронное ядро NOVA ARMADA (процедурно).
+//  Не корпус, не кольцо и не колосс: вокруг сердцевины крутится
+//  кольцо-статор, а саму сердцевину закрывают лепестки брони.
+//  Выдохшись после плоскостного луча, PULSAR разводит лепестки —
+//  и тогда на ядро падают «ногами вперёд» хоть с пола, хоть с потолка.
+// ------------------------------------------------------------
+function boss5Sprite(eye, open, frame, mono) {
+  const c = makeCanvas(40, 40), q = px(c.getContext('2d'), TH_ARMADA, mono);
+  const cx = 19.5, cy = 19.5, a0 = frame * Math.PI / 8;
+  for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {      // кольцо-статор
+    const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
+    if (d > 19.4 || d < 14.2) continue;
+    const seg = Math.floor((Math.atan2(dy, dx) + a0) / Math.PI * 4 + 16) % 8;
+    q.p(x, y, d > 18.3 || d < 15.1 ? 'd' : seg % 2 ? 'M' : 'm');
+  }
+  for (let i = 0; i < 8; i++) {                                    // огни по ободу
+    const a = a0 + i * Math.PI / 4;
+    q.p(Math.round(cx + Math.cos(a) * 16.7), Math.round(cy + Math.sin(a) * 16.7), i % 2 ? 'C' : 'c');
+  }
+  for (let i = 0; i < 4; i++) {                                    // спицы к сердцевине
+    const a = a0 * 1.7 + i * Math.PI / 2;
+    const ox = Math.abs(Math.cos(a)) > 0.5 ? 0 : 1, oy = ox ? 0 : 1;
+    for (let r = open ? 11 : 7; r < 15; r++) {                     // при разведённых лепестках
+      const x = Math.round(cx + Math.cos(a) * r), y = Math.round(cy + Math.sin(a) * r);
+      q.p(x, y, r === 10 ? 'W' : r > 12 ? 'M' : 'm');              // видна только внешняя часть
+      q.p(x + ox, y + oy, r > 12 ? 'd' : 'M');
+    }
+  }
+  if (open) {                                                      // лепестки разведены
+    for (let i = 0; i < 6; i++) {
+      const a = -a0 + i * Math.PI / 3;
+      for (let r = 9; r < 13; r++)
+        q.p(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), r < 11 ? 'W' : 'm');
+    }
+    for (let y = 11; y < 29; y++) for (let x = 11; x < 29; x++) {   // сердцевина наружу
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > 8.4) continue;
+      q.p(x, y, d > 7.4 ? 'g' : d > 5 ? 'G' : (x + y + frame) % 4 < 2 ? 'w' : 'G');
+    }
+    q.r(17, 17, 6, 6, frame % 2 ? 'w' : 'Y');
+  } else {                                                         // броня сомкнута
+    for (let y = 6; y < 34; y++) for (let x = 6; x < 34; x++) {
+      const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
+      if (d > 12.4) continue;
+      const seg = Math.floor((Math.atan2(dy, dx) - a0 * 0.7) / Math.PI * 3 + 18) % 6;
+      q.p(x, y, d > 11.3 ? 'd' : seg % 2 ? 'M' : 'm');
+    }
+    for (const ox of [-9, 3]) {                                    // визор с двумя огнями
+      q.r(19 + ox, 18, 6, 3, eye);
+      q.r(20 + ox, 19, 4, 1, eye === 'w' ? 'C' : 'w');
+    }
   }
   return c;
 }
@@ -1288,6 +1549,96 @@ function tileCryoBody(frame) {
   return c;
 }
 
+// Нижняя кромка нависающей палубы: прозрачный оверлей с неоном по «потолку».
+// Нужен там, где ходят по изнанке перекрытия.
+function tileGroundUnder(th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  q.hl(0, 15, 16, 'W');
+  q.hl(0, 14, 16, 'm');
+  q.hl(0, 13, 16, 'C');          // неоновая кромка
+  q.hl(0, 12, 16, 'c');
+  for (const x of [3, 12]) { q.p(x, 10, 'W'); q.p(x + 1, 10, 'd'); }
+  return c;
+}
+// Вертикальное зеркало готового тайла — шипы под перекрытием
+function flipV(img) {
+  const c = makeCanvas(img.width, img.height), x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  x.translate(0, img.height); x.scale(1, -1); x.drawImage(img, 0, 0);
+  return c;
+}
+
+// --- новые тайлы NOVA ARMADA ---
+
+// Гравитационный маяк: кольцо-статор с пульсирующим ядром и шевронами
+// в обе стороны — он не «тянет вверх», а переворачивает тягу.
+// stage: 0/1 — покой (два кадра), 2 — только что сработал.
+function tileBeacon(stage, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  const hot = stage === 2;
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {   // обод
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d > 7.4 || d < 4.4) continue;
+    q.p(x, y, d > 6.6 ? 'd' : d > 5.4 ? 'M' : 'm');
+  }
+  for (const [x, y] of [[1, 7], [14, 7], [7, 1], [8, 1], [7, 14], [8, 14]]) q.p(x, y, 'W');
+  const ch = hot ? 'w' : stage ? 'C' : 'c';                     // шевроны вверх и вниз
+  for (let i = 0; i < 3; i++) {
+    q.p(7 - i, 3 + i, ch); q.p(8 + i, 3 + i, ch);
+    q.p(7 - i, 12 - i, ch); q.p(8 + i, 12 - i, ch);
+  }
+  q.r(7, 6, 2, 4, hot ? 'w' : 'C');                             // ядро-крест
+  q.r(6, 7, 4, 2, hot ? 'w' : 'C');
+  q.r(7, 7, 2, 2, hot ? 'C' : 'w');
+  return c;
+}
+
+// Ускорительное кольцо: «на ребро», шевроны бегут в сторону броска.
+// dir — куда бросает (1 — вправо, -1 — влево).
+function tileRing(dir, frame, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  const X = x => (dir > 0 ? x : 15 - x);
+  const p = (x, y, k) => q.p(X(x), y, k);
+  for (let y = 2; y < 14; y++) { p(2, y, 'W'); p(3, y, 'M'); p(12, y, 'M'); p(13, y, 'd'); }
+  for (const [y, x0, x1] of [[1, 3, 12], [0, 5, 10], [14, 3, 12], [15, 5, 10]])
+    for (let x = x0; x <= x1; x++) p(x, y, y < 8 ? 'W' : 'M');
+  for (let y = 3; y < 14; y += 3) { p(2, y, 'C'); p(3, y, 'c'); p(13, y, 'C'); p(12, y, 'c'); }   // катушки
+  for (let i = 0; i < 2; i++) {                                      // шевроны разгона
+    const x = 4 + ((i * 3 + frame * 2) % 6), k = i === frame % 2 ? 'w' : 'C';
+    p(x, 5, k); p(x + 1, 6, k); p(x + 2, 7, k); p(x + 1, 8, k); p(x, 9, k);
+  }
+  return c;
+}
+
+// Метеорный поток: поверхность (3 кадра) и толща (2 кадра). Вне тем — свой набор S*.
+function tileMeteorTop(frame) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'));
+  const surf = x => 3 + Math.round(2 * Math.sin((x + frame * 3) / 2.2));
+  for (let x = 0; x < 16; x++) {
+    const y = surf(x);
+    q.p(x, y, 'S4');
+    q.r(x, y + 1, 1, 2, 'S3');
+    q.r(x, y + 3, 1, 3, 'S2');
+    q.r(x, y + 6, 1, 16 - y - 6, 'S1');
+  }
+  for (let i = 0; i < 5; i++) {                           // искры срываются с гребня
+    const x = (i * 7 + frame * 5) % 16, y = surf(x);
+    q.p(x, y - 2, 'S4'); q.p((x + 3) % 16, y - 4, 'S3');
+  }
+  return c;
+}
+function tileMeteorBody(frame) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'));
+  q.r(0, 0, 16, 16, 'S1');
+  q.r(1, 2, 14, 12, 'S0');
+  for (let i = 0; i < 4; i++) {                           // кувыркающиеся обломки
+    const x = (i * 5 + frame * 4) % 14, y = (i * 7 + frame * 3) % 13;
+    q.r(x, y, 2, 2, i % 2 ? 'S2' : 'S1');
+    q.p(x, y, 'S3');
+  }
+  return c;
+}
+
 // Портал выхода 32x32, 2 кадра
 function portal(frame, th) {
   const c = makeCanvas(32, 32), q = px(c.getContext('2d'), th);
@@ -1712,6 +2063,129 @@ function bgFrostRibs(w, h) {  // ближний слой: мёрзлые тру�
 }
 
 // ------------------------------------------------------------
+//  ФОНЫ — NOVA ARMADA (открытый космос): вместо неба и земли —
+//  звёздное поле, за ним мёртвый флот, а вблизи его обломки.
+// ------------------------------------------------------------
+function bgStarfield(w, h) {
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  // «неба» здесь нет: только чуть неровная чернота, чтобы поле не выглядело плоским
+  for (let y = 0; y < h; y++) {
+    const t = 0.5 - 0.5 * Math.cos(y / h * Math.PI * 2);
+    q.r(0, y, w, 1, ['#08060e', '#0b0814', '#0e0a1a', '#120c22'][Math.min(3, Math.floor(t * 4))]);
+  }
+  // туманность: рваные пятна фиалки, край уходит дизером
+  for (const [bx, by, br, col] of [[58, 72, 48, 'V5'], [92, 98, 30, 'v5'],
+                                   [230, 152, 54, 'V5'], [256, 134, 26, 'v5']]) {
+    for (let y = Math.max(0, by - br); y < Math.min(h, by + br); y++)
+      for (let x = bx - br; x < bx + br; x++) {
+        if (x < 0 || x >= w) continue;
+        const d = Math.hypot(x - bx, (y - by) * 1.4) / br;
+        if (d > 1 || (d > 0.5 && (x + y * 2 + Math.floor(d * 9)) % 3)) continue;
+        q.p(x, y, col);
+      }
+  }
+  const R = rng(91);
+  for (let i = 0; i < 430; i++) {                       // звёздная пыль в три яркости
+    const x = Math.floor(R() * w), y = Math.floor(R() * h), t = R();
+    q.p(x, y, t < 0.12 ? 'w5' : t < 0.4 ? 'W5' : t < 0.7 ? 'C5' : 'm5');
+  }
+  for (let i = 0; i < 13; i++) {                        // крупные звёзды с лучами
+    const x = 3 + Math.floor(R() * (w - 6)), y = 3 + Math.floor(R() * (h - 6));
+    q.p(x, y, 'w5');
+    q.p(x - 1, y, 'W5'); q.p(x + 1, y, 'W5'); q.p(x, y - 1, 'W5'); q.p(x, y + 1, 'W5');
+    q.p(x - 2, y, 'm5'); q.p(x + 2, y, 'm5');
+  }
+  const sx = 268, sy = 50;                              // далёкая нова: диск и корона дизером
+  for (let y = sy - 25; y <= sy + 25; y++) for (let x = sx - 25; x <= sx + 25; x++) {
+    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+    const d = Math.hypot(x - sx, y - sy);
+    if (d > 25) continue;
+    if (d <= 9) q.p(x, y, d > 7.5 ? 'C5' : d > 5 ? 'W5' : 'w5');
+    else if ((x * 3 + y * 5 + Math.floor(d) * 7) % Math.max(2, Math.floor(d) - 6) === 0)
+      q.p(x, y, d > 17 ? 'c5' : 'C5');
+  }
+  return c;
+}
+
+function bgHulks(w, h) {  // дальний слой: мёртвый флот — переломленные корпуса
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const R = rng(53);
+  let x = 4;
+  while (x < w) {
+    const bw = 44 + Math.floor(R() * 60), bh = 13 + Math.floor(R() * 15);
+    const by = 30 + Math.floor(R() * (h - 96)), gap = 0.3 + R() * 0.3;   // где корпус переломлен
+    for (let i = 0; i < bw; i++) {
+      const t = i / (bw - 1);
+      if (Math.abs(t - gap) < 0.035) continue;                           // разлом
+      const half = Math.max(1, Math.round(bh / 2 * Math.min(1, (1 - Math.abs(t - 0.66) * 1.6) * 1.7)));
+      const skew = Math.round((t - gap) * (t > gap ? 4 : -2));           // корма отошла от носа
+      for (let dy = -half; dy <= half; dy++) {
+        const y = by + dy + (t > gap ? skew : 0);
+        if (y < 0 || y >= h) continue;
+        q.p(x + i, y, dy === -half ? 'd5' : dy === half ? 'K5' : dy < 0 ? 'D5' : 'K5');
+      }
+      if (i % 8 === 3 && R() < 0.5)                                      // редкие живые огни
+        q.p(x + i, by - 1 + (t > gap ? skew : 0), R() < 0.6 ? 'c5' : 'o5');
+    }
+    for (let k = 0; k < 3; k++) {                                        // мачты и антенны
+      const mx = x + 6 + Math.floor(R() * (bw - 12)), mh = 6 + Math.floor(R() * 14);
+      const top = by - Math.round(bh / 2) - mh;        // дробный y размазал бы пиксель
+      q.vl(mx, top, mh, 'D5');
+      q.p(mx, top, 'c5');
+    }
+    x += bw + 22 + Math.floor(R() * 38);
+  }
+  for (let i = 0; i < 70; i++) {                                         // обломки на орбите
+    const dx = Math.floor(R() * w), dy = Math.floor(R() * h), s = 1 + Math.floor(R() * 3);
+    q.r(dx, dy, s, s, R() < 0.7 ? 'D5' : 'd5');
+  }
+  return c;
+}
+
+function bgWreckage(w, h) {  // ближний слой: фермы, солнечные паруса, антенны
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const R = rng(37);
+  let x = 6;
+  while (x < w) {
+    const kind = R();
+    if (kind < 0.4) {                        // ферма: пояс и раскосы
+      const fy = 26 + Math.floor(R() * (h - 80)), fw = 40 + Math.floor(R() * 60);
+      q.hl(x, fy, fw, 'd5'); q.hl(x, fy + 1, fw, 'K5');
+      q.hl(x, fy + 11, fw, 'd5'); q.hl(x, fy + 12, fw, 'K5');
+      for (let i = 0; i < fw - 6; i += 7) {
+        for (let k = 0; k < 10; k++) q.p(x + i + (i / 7 % 2 ? k : 9 - k), fy + 2 + k, 'K5');
+        q.vl(x + i, fy, 13, 'd5');
+      }
+      if (R() < 0.6) { q.r(x + fw - 6, fy - 4, 6, 20, 'D5'); q.p(x + fw - 3, fy + 4, 'c5'); }
+      x += fw + 16 + Math.floor(R() * 36);
+    } else if (kind < 0.72) {                // солнечный парус: рама с ячейками
+      const py = 20 + Math.floor(R() * (h - 90)), pw = 26, ph = 38 + Math.floor(R() * 26);
+      q.vl(x + pw / 2, py - 8, 8, 'd5');
+      q.r(x, py, pw, ph, 'K5');
+      q.hl(x, py, pw, 'd5'); q.hl(x, py + ph - 1, pw, 'd5');
+      q.vl(x, py, ph, 'd5'); q.vl(x + pw - 1, py, ph, 'd5');
+      for (let cy = py + 2; cy < py + ph - 2; cy += 6) for (let cx2 = x + 2; cx2 < x + pw - 3; cx2 += 6) {
+        q.r(cx2, cy, 4, 4, R() < 0.12 ? 'K5' : 'p5');
+        q.p(cx2, cy, 'P5');
+      }
+      x += pw + 26 + Math.floor(R() * 40);
+    } else {                                 // мачта с тарелкой и растяжками
+      const my = 14 + Math.floor(R() * 40), mh = 70 + Math.floor(R() * 90);
+      q.r(x, my, 5, mh, 'D5'); q.vl(x, my, mh, 'd5'); q.vl(x + 4, my, mh, 'K5');
+      for (let y = my + 10; y < my + mh; y += 18) { q.r(x - 2, y, 9, 2, 'd5'); q.p(x + 6, y, 'K5'); }
+      const dr = 7 + Math.floor(R() * 4);
+      for (let dy = -dr; dy <= dr; dy++) for (let dx = -dr; dx <= 1; dx++) {
+        if (dx * dx * 2 + dy * dy > dr * dr) continue;
+        q.p(x - 6 + dx + dr, my + 18 + dy, dx > -2 ? 'd5' : dx < -dr + 2 ? 'K5' : 'D5');
+      }
+      q.p(x - 5 + dr, my + 18, 'c5');
+      x += 34 + Math.floor(R() * 46);
+    }
+  }
+  return c;
+}
+
+// ------------------------------------------------------------
 //  Сборка
 // ------------------------------------------------------------
 function buildTheme(th) {
@@ -1743,6 +2217,10 @@ function buildTheme(th) {
   T.grip = { l: tileGrip('l', th), r: tileGrip('r', th), b: tileGrip('b', th) };
   T.icicle = [tileIcicle(0, th), tileIcicle(1, th), tileIcicle(2, th)];
   T.blower = [-1, 1].map(d => [0, 1, 2].map(st => tileBlower(d, st, th)));
+  T.groundUnder = tileGroundUnder(th);
+  T.spikesDown = T.spikes.map(flipV);
+  T.beacon = [tileBeacon(0, th), tileBeacon(1, th), tileBeacon(2, th)];
+  T.ring = [-1, 1].map(d => [0, 1, 2, 3].map(f => tileRing(d, f, th)));
   return T;
 }
 
@@ -1758,6 +2236,9 @@ function buildAssets() {
   A.rift = { top: [tileVoidTop(0), tileVoidTop(1), tileVoidTop(2)], body: [tileVoidBody(0), tileVoidBody(1)] };
   // криовзвесь — тоже вне тем, своя палитра Q*
   A.cryo = { top: [tileCryoTop(0), tileCryoTop(1), tileCryoTop(2)], body: [tileCryoBody(0), tileCryoBody(1)] };
+  // метеорный поток — палитра S*
+  A.meteor = { top: [tileMeteorTop(0), tileMeteorTop(1), tileMeteorTop(2)],
+               body: [tileMeteorBody(0), tileMeteorBody(1)] };
 
   A.boss = {
     dormant: bossSprite('closed', 'G', 'r', 'off'),
@@ -1793,6 +2274,16 @@ function buildAssets() {
     open: hoar('Y', true),             // выдохся — корона раскрыта
     flash: boss4Sprite('w', true, 0, 'w'),
   };
+  // нейтронное ядро: лепестки брони разводятся, только когда оно выдохлось
+  const puls = (eye, open) => [0, 1, 2, 3].map(f => boss5Sprite(eye, open, f));
+  A.boss5 = {
+    dormant: puls('r', false),         // спит на приколе
+    live: puls('R', false),            // раскручен
+    tell: puls('Y', false),            // разметил плоскость
+    hot: puls('w', false),             // бьёт лучом вдоль плоскости
+    open: puls('Y', true),             // выдохся — сердцевина наружу
+    flash: boss5Sprite('w', true, 0, 'w'),
+  };
 
   // фоны собираются лениво — по одному набору на тему
   const BG = [
@@ -1801,6 +2292,7 @@ function buildAssets() {
     () => ({ far: bgAshSky(320, 224), mid: bgSpires(480, 224), near: bgRamparts(640, 224) }),
     // вертикальный уровень: слои стыкуются сами с собой и по высоте
     () => ({ far: bgFrostSky(320, 224), mid: bgIceColumns(320, 224), near: bgFrostRibs(320, 224) }),
+    () => ({ far: bgStarfield(320, 224), mid: bgHulks(480, 224), near: bgWreckage(640, 224) }),
   ];
 
   // темы: тайлы + враги + фоны
@@ -1817,6 +2309,10 @@ function buildAssets() {
       drifter: DRIFTER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
       skater: SKATER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
       howler: HOWLER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      orbiter: ORBITER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      mine: MINE.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      splitter: SPLITTER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      shard: SHARD.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
       saw: [0, 1, 2, 3].map(f => sawSprite(f, th)),
       portal: [portal(0, th), portal(1, th)],
       moving: movingPlatform(th),

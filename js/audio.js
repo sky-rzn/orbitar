@@ -255,6 +255,25 @@ const DEFS = {
     fm({ t0: t, f: 170, f2: 90, ratio: 1.5, index: 3, dur: 0.45, vol: 0.08 * o.v, wave: 'sine', pan: o.pan });
   },
 
+  // ---- космос: переворот тяги, ускорительное кольцо, мины, деленцы ----
+  flip: (t, o) => {                                  // маяк перевернул тягу
+    blip({ t0: t, wave: 'p25', f: 900, f2: 200, gl: 0.45, dur: 0.16, vol: 0.13 * o.v, pan: o.pan });
+    blip({ t0: t + 0.09, wave: 'p12', f: 240, f2: 1500, gl: 0.7, dur: 0.34, vol: 0.15 * o.v, pan: o.pan, echo: true });
+    noise({ t0: t, kind: 'white', filter: 'bandpass', f: 600, f2: 3200, q: 1.4, dur: 0.34, vol: 0.09 * o.v, pan: o.pan });
+  },
+  boost: (t, o) => {                                 // кольцо бросило вдоль оси
+    fm({ t0: t, f: 180, f2: 900, gl: 0.5, ratio: 1.5, index: 6, idxDecay: 0.4, dur: 0.3, vol: 0.16 * o.v, wave: 'sawtooth', pan: o.pan });
+    noise({ t0: t, kind: 'white', filter: 'bandpass', f: 900, f2: 4200, q: 1.2, dur: 0.32, vol: 0.13 * o.v, pan: o.pan });
+    blip({ t0: t, wave: 'p12', f: nf('e5'), f2: nf('e6'), gl: 0.5, dur: 0.2, vol: 0.1 * o.v, pan: o.pan, echo: true });
+  },
+  mineArm: (t, o) => [0, 0.11].forEach((dt, i) =>    // мина взвелась: два щелчка
+    blip({ t0: t + dt, wave: 'p12', f: 1250 + i * 380, dur: 0.07, vol: 0.11 * o.v, pan: o.pan })),
+  split: (t, o) => {                                 // деленец раскололся надвое
+    noise({ t0: t, kind: 'metal', filter: 'bandpass', f: 3000, f2: 1100, q: 2.6, dur: 0.2, vol: 0.12 * o.v, pan: o.pan });
+    ['c#6', 'f#6'].forEach((n, i) =>
+      blip({ t0: t + i * 0.05, wave: 'p12', f: nf(n), dur: 0.18, vol: 0.1 * o.v, pan: o.pan, echo: true }));
+  },
+
   // ---- враги ----
   shot: (t, o) => {
     fm({ t0: t, f: 900, f2: 260, ratio: 2.5, index: 4, dur: 0.16, vol: 0.13 * o.v, wave: 'square', pan: o.pan });
@@ -386,7 +405,8 @@ const DEFS = {
 // минимальный интервал между повторами одного звука, мс
 const GAP = { land: 60, crumble: 90, phase: 120, shot: 40, drip: 50, gateWarn: 70, gateOn: 70, pressSlam: 60,
              tell: 150, leap: 80, leapTell: 80, boom: 70, spore: 60, lance: 60, cell: 40, spawn: 120,
-             crack: 90, shatter: 70, skid: 110, gust: 200, hail: 60, drop: 60 };
+             crack: 90, shatter: 70, skid: 110, gust: 200, hail: 60, drop: 60,
+             flip: 90, boost: 90, mineArm: 220, split: 70 };
 
 function play(name, o) {
   if (!on || !ctx || ctx.state !== 'running') return;
@@ -1248,6 +1268,170 @@ const TRACKS = {
                '=',
                '=',
                'k  .  .  k  h  .  s  .  t  t  T  T  s  s  s  s '],
+      },
+    },
+  },
+
+  armada: {                                      // NOVA ARMADA — невесомый галоп в F#m
+    bpm: 168,
+    vol: { gtr: 0.62, bass: 0.66, lead: 0.5, drum: 0.55 },
+    order: ['intro', 'verse', 'verse2', 'pre', 'chorus', 'interlude', 'verse2',
+            'bridge', 'solo', 'solo2', 'pre', 'chorus', 'chorus2', 'outro'],
+    sections: {
+      intro: {
+        gtr: [R,
+              R,
+              'f#2 -  -  -  -  -  -  -  f#2 -  -  -  -  -  -  - ',
+              'a2 -  -  -  -  -  -  -  e2 -  -  -  .  e2 .  . '],
+        bass: ['f#1 -  -  -  -  -  -  -  f#1 -  -  -  -  -  -  - ',
+               'f#1 -  -  -  -  -  -  -  a1 -  -  -  -  -  -  - ',
+               'f#1 .  .  .  f#1 .  .  .  f#1 .  .  .  f#1 .  .  . ',
+               'a1 .  .  .  a1 .  .  .  e1 .  .  .  e1 .  e1 . '],
+        lead: ['c#5 -  -  -  -  -  -  -  f#5 -  -  -  -  -  -  - ',
+               'e5 -  -  -  d5 -  -  -  c#5 -  -  -  -  -  -  . ',
+               R,
+               R],
+        drum: [R,
+               '.  .  .  .  .  .  .  .  .  .  .  .  t  .  T  . ',
+               'k  .  .  .  h  .  s  .  k  .  .  k  h  .  s  . ',
+               'k  .  .  .  h  .  s  .  t  .  t  .  T  .  T  . '],
+      },
+      verse: {
+        gtr: ['f#2 -  -  .  f#2 .  f#2 .  a2 -  -  .  f#2 .  .  . ',
+              'f#2 -  -  .  f#2 .  f#2 .  e2 -  .  d2 -  .  f#2 . ',
+              'd2 -  -  .  d2 .  e2 -  -  .  e2 .  f#2 -  -  . ',
+              'a2 -  -  .  e2 -  -  .  f#2 -  -  -  f#2 .  a2 b2'],
+        bass: ['f#1 .  f#1 .  f#1 .  f#1 f#1 a1 .  a1 .  f#1 .  f#1 . ',
+               'f#1 .  f#1 .  f#1 .  f#1 f#1 e1 .  e1 .  d1 .  f#1 . ',
+               'd1 .  d1 .  d1 .  e1 .  e1 .  e1 .  f#1 .  f#1 . ',
+               'a1 .  a1 .  e1 .  e1 .  f#1 .  f#2 .  f#1 .  a1 b1'],
+        lead: [R,
+               R,
+               R,
+               R],
+        drum: ['kc .  .  .  h  .  s  .  k  .  .  k  h  .  s  . ',
+               'k  .  .  .  h  .  s  .  k  .  .  k  h  .  s  H ',
+               'kc .  .  .  h  .  s  .  k  .  .  k  h  .  s  . ',
+               'k  .  .  k  h  .  s  .  t  .  T  .  s  .  s  s '],
+      },
+      verse2: {
+        from: 'verse',
+        lead: [R,
+               'c#5 -  -  -  f#5 -  -  -  a5 -  e5 -  c#5 -  -  - ',
+               'd5 -  -  -  c#5 -  -  -  b4 -  a4 -  b4 -  -  - ',
+               'c#5 -  e5 -  f#5 -  e5 -  c#5 -  -  -  -  -  -  . '],
+      },
+      chorus: {
+        gtr: ['d3 -  -  -  -  -  -  -  -  -  -  .  d3 .  d3 . ',
+              'a2 -  -  -  -  -  -  -  -  -  -  .  a2 .  a2 . ',
+              'e2 -  -  -  -  -  -  -  -  -  -  .  e2 .  e2 . ',
+              'f#2 -  -  -  -  -  -  -  -  -  -  -  -  -  .  . '],
+        bass: ['d2 .  .  d2 .  .  d2 .  d1 .  .  d2 .  d2 .  . ',
+               'a1 .  .  a1 .  .  a1 .  a1 .  .  a2 .  a1 .  . ',
+               'e1 .  .  e1 .  .  e1 .  e1 .  .  e2 .  e1 .  . ',
+               'f#1 .  .  f#1 .  .  f#1 .  f#2 .  .  f#1 .  c#1 .  . '],
+        lead: ['a5 -  -  -  f#5 -  -  -  d5 -  -  -  -  -  -  . ',
+               'c#6 -  -  -  a5 -  -  -  e5 -  -  -  -  -  -  . ',
+               'b5 -  -  -  g#5 -  -  -  e5 -  -  -  -  -  -  . ',
+               'c#6 -  -  -  b5 -  a5 -  f#5 -  -  -  -  -  -  . '],
+        drum: ['kc .  .  .  h  .  s  .  k  .  .  k  h  .  s  . ',
+               'k  .  .  .  h  .  s  .  k  .  .  k  h  .  s  . ',
+               'kc .  .  .  h  .  s  .  k  .  .  k  h  .  s  . ',
+               'k  .  .  .  h  .  s  .  t  .  T  .  s  .  s  s '],
+      },
+      bridge: {                                  // невесомость: гитара молчит, бас шагает
+        gtr: [R,
+              R,
+              R,
+              R],
+        bass: ['f#1 .  .  .  f#1 .  .  .  f#1 .  .  .  f#1 .  .  . ',
+               'd1 .  .  .  d1 .  .  .  d1 .  .  .  c#1 .  .  . ',
+               'b1 .  .  .  b1 .  .  .  b1 .  .  .  b1 .  .  . ',
+               'c#1 .  .  .  c#1 .  .  .  c#1 .  .  .  c#1 .  c#2 . '],
+        lead: ['f#4 -  -  -  -  -  a4 -  c#5 -  -  -  -  -  -  . ',
+               'd5 -  -  -  c#5 -  -  -  a4 -  -  -  -  -  -  . ',
+               'b4 -  -  -  d5 -  -  -  c#5 -  b4 -  -  -  -  . ',
+               'a4 -  -  -  g#4 -  -  -  f#4 -  -  -  -  -  .  . '],
+        drum: [R,
+               '.  .  .  .  .  .  .  .  .  .  .  .  h  .  h  . ',
+               'k  .  .  .  .  .  s  .  .  .  .  .  .  .  .  . ',
+               'k  .  .  .  .  .  s  .  t  .  t  .  T  .  T  . '],
+      },
+      solo: {
+        from: 'verse',
+        lead: ['f#5 -  a5 -  c#6 -  b5 -  a5 -  g#5 -  f#5 -  -  - ',
+               'c#6 -  d6 -  e6 -  d6 -  c#6 -  b5 -  a5 -  -  - ',
+               'f#6 -  e6 -  d6 -  c#6 -  b5 -  a5 -  g#5 -  f#5 - ',
+               'a5 -  b5 -  c#6 -  d6 -  c#6 -  -  -  -  -  -  . '],
+      },
+      solo2: {                                   // соло уходит вверх и осыпается вниз
+        from: 'verse',
+        lead: ['f#6 -  e6 -  c#6 -  b5 -  a5 -  b5 -  c#6 -  e6 - ',
+               'f#6 e6 c#6 b5 a5 -  f#5 -  g#5 a5 b5 c#6 d6 -  c#6 - ',
+               'b5 -  d6 -  c#6 -  b5 -  a5 g#5 f#5 e5 f#5 -  a5 - ',
+               'c#6 -  b5 -  a5 -  f#5 -  c#5 -  -  -  f#5 -  -  - '],
+        drum: ['=',
+               '=',
+               '=',
+               'k  .  .  k  h  .  s  .  t  t  T  T  s  s  s  s '],
+      },
+      outro: {
+        gtr: ['f#2 -  -  .  d2 -  -  .  e2 -  -  .  f#2 .  .  . ',
+              'f#2 -  -  -  -  -  -  -  -  -  -  -  -  -  -  - '],
+        bass: ['f#1 .  f#1 .  d1 .  d1 .  e1 .  e1 .  f#1 .  f#1 . ',
+               'f#1 -  -  -  -  -  -  -  -  -  -  -  -  -  -  - '],
+        lead: [R,
+               'c#5 -  -  -  -  -  -  -  -  -  -  -  -  -  -  - '],
+        drum: ['k  .  .  .  h  .  s  .  t  .  t  .  T  .  T  . ',
+               'kc .  .  .  .  .  .  .  .  .  .  .  .  .  .  . '],
+      },
+      pre: {                                     // D-E-F#m-A: разгон перед припевом
+        gtr: ['d2 -  -  -  -  -  .  d2 .  d2 .  .  d2 .  .  . ',
+              'e2 -  -  -  -  -  .  e2 .  e2 .  .  e2 .  .  . ',
+              'f#2 -  -  -  -  -  .  f#2 .  f#2 .  .  f#2 .  .  . ',
+              'a2 -  -  -  .  a2 .  a2 .  a2 .  a2 .  a2 a2 a2'],
+        bass: ['d1 .  .  .  d1 .  .  d2 .  d1 .  .  d1 .  .  . ',
+               'e1 .  .  .  e1 .  .  e2 .  e1 .  .  e1 .  .  . ',
+               'f#1 .  .  .  f#1 .  .  f#2 .  f#1 .  .  f#1 .  .  . ',
+               'a1 .  .  .  a1 .  .  a2 .  a1 .  a1 .  a1 a1 a1'],
+        lead: ['.  .  .  .  .  .  .  .  f#4 -  -  -  a4 -  -  - ',
+               'b4 -  -  -  -  -  .  .  c#5 -  -  -  e5 -  -  - ',
+               'f#5 -  -  -  e5 -  d5 -  c#5 -  -  -  -  -  .  . ',
+               'd5 -  -  -  e5 -  f#5 -  a5 -  -  -  b5 -  c#6 - '],
+        drum: ['kc .  .  .  .  .  .  .  s  .  .  .  .  .  .  . ',
+               'k  .  .  .  .  .  .  k  s  .  .  .  .  .  .  . ',
+               'kc .  .  .  .  .  .  .  s  .  .  .  .  .  .  H ',
+               'k  .  h  h  s  .  h  h  t  t  T  T  s  s  s  s '],
+      },
+      chorus2: {                                 // припев на повторе: верхний регистр, райд
+        from: 'chorus',
+        lead: ['e5 -  -  -  a5 -  -  -  c#6 -  -  -  -  -  b5 - ',
+               'c#6 -  -  -  a5 -  -  -  e5 -  a5 -  c#6 -  -  - ',
+               'b5 -  -  -  e6 -  -  -  d6 -  b5 -  g#5 -  -  - ',
+               'c#6 -  -  -  b5 -  g#5 -  f#5 -  e5 -  c#5 -  -  - '],
+        drum: ['kc .  r  k  s  .  r  .  k  .  r  k  s  .  r  r ',
+               'k  .  r  k  s  .  r  .  k  .  r  k  s  .  r  . ',
+               'kc .  r  k  s  .  r  .  k  .  r  k  s  .  r  r ',
+               'k  .  r  k  s  .  r  .  t  t  T  T  s  s  s  s '],
+      },
+      interlude: {                               // чистые арпеджио F#m-D-A-E: дрейф в невесомости
+        feel: 'clean',
+        gtr: ['f#3 .  a3 .  c#4 .  f#4 .  c#4 .  a3 .  c#4 .  f#3 . ',
+              'd3 .  f#3 .  a3 .  d4 .  a3 .  f#3 .  a3 .  d3 . ',
+              'a3 .  c#4 .  e4 .  a4 .  e4 .  c#4 .  e4 .  a3 . ',
+              'e3 .  g#3 .  b3 .  e4 .  b3 .  g#3 .  b3 .  c#4 d4'],
+        bass: ['f#1 -  -  -  -  -  -  -  f#1 -  -  -  -  -  .  . ',
+               'd1 -  -  -  -  -  -  -  d1 -  -  -  -  -  .  . ',
+               'a1 -  -  -  -  -  -  -  a1 -  -  -  -  -  .  . ',
+               'e1 -  -  -  -  -  -  -  e1 -  -  -  .  e1 .  . '],
+        lead: [R,
+               'f#5 -  -  -  -  -  .  .  a5 -  -  -  -  -  .  . ',
+               'c#5 -  -  -  b4 -  -  -  a4 -  -  -  -  -  -  . ',
+               'g#4 -  -  -  b4 -  a4 -  g#4 -  -  -  -  -  .  . '],
+        drum: ['.  .  h  .  x  .  h  .  .  .  h  .  x  .  h  . ',
+               'k  .  h  .  x  .  h  .  .  .  h  .  x  .  h  . ',
+               '.  .  h  .  x  .  h  .  .  .  h  .  x  .  h  . ',
+               'k  .  h  .  x  .  h  k  .  .  h  .  x  .  t  T '],
       },
     },
   },

@@ -1,5 +1,5 @@
 // ============================================================
-//  ORBITAR — игровой движок (четыре уровня)
+//  ORBITAR — игровой движок (пять уровней)
 // ============================================================
 'use strict';
 (() => {
@@ -9,7 +9,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const A = buildAssets();
-const LEVELS = [LEVEL1, LEVEL2, LEVEL3, LEVEL4];
+const LEVELS = [LEVEL1, LEVEL2, LEVEL3, LEVEL4, LEVEL5];
 
 // ---------- масштабирование под окно (целочисленное) ----------
 function fit() {
@@ -26,11 +26,11 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
-// чит-коды: LVL1..LVL4 — в начало уровня, BOSS1..BOSS4 — к его боссу, NEXT — сразу на следующий уровень
+// чит-коды: LVL1..LVL5 — в начало уровня, BOSS1..BOSS5 — к его боссу, NEXT — сразу на следующий уровень
 const CHEATS = {
-  LVL1: { lv: 0 }, LVL2: { lv: 1 }, LVL3: { lv: 2 }, LVL4: { lv: 3 },
-  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true },
-  BOSS3: { lv: 2, boss: true }, BOSS4: { lv: 3, boss: true },
+  LVL1: { lv: 0 }, LVL2: { lv: 1 }, LVL3: { lv: 2 }, LVL4: { lv: 3 }, LVL5: { lv: 4 },
+  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true }, BOSS3: { lv: 2, boss: true },
+  BOSS4: { lv: 3, boss: true }, BOSS5: { lv: 4, boss: true },
   NEXT: { next: true },
 };
 const CHEAT_CODES = Object.keys(CHEATS);
@@ -93,9 +93,11 @@ function isSolid(x, y) {
 }
 const isStatic = (x, y) => STATIC.includes(ch(x, y));
 const isOneWay = (x, y) => ch(x, y) === '-';
-// под ногами только решётка (твёрдой опоры рядом нет) — с такой можно спрыгнуть вниз
+// под ногами только решётка (твёрдой опоры рядом нет) — с такой можно спрыгнуть вниз.
+// «Ноги» — та грань габарита, в которую тянет: низ при обычной тяге, верх при перевёрнутой.
+const feetY = () => (P.gdir > 0 ? P.y + P.h : P.y);
 function onOneWay() {
-  const ty = Math.floor((P.y + P.h + EPS) / T);
+  const ty = Math.floor((P.gdir > 0 ? P.y + P.h + EPS : P.y - EPS) / T);
   const x1 = Math.floor(P.x / T), x2 = Math.floor((P.x + P.w - EPS) / T);
   let grate = false;
   for (let tx = x1; tx <= x2; tx++) {
@@ -120,6 +122,10 @@ const BELT = 0.62;                           // тяга конвейерной 
 const GUST = { period: 240, warn: 140, on: 170, push: 0.55 };  // цикл раструба: покой → предупреждение → пурга
 const ICICLE = { warn: 32, grav: 0.34, maxFall: 7.5, back: 210, reach: 12 };
 const FLOOD = { rise: 0.1, drain: 2 * T };  // криовзвесь на арене: прибывает всегда, уходит от попаданий
+// Ускорительное кольцо: бросок и плавный возврат к обычному потолку скорости
+const BOOST = { speed: 4.2, time: 55, lock: 14 };
+const MINEC = { speed: 0.36, near: 54, fuse: 56, shards: 6, shot: 1.9 };  // дрейф-мина
+const SHARD = { vx: 1.6, vy: -2.8, life: 240 };                           // осколок деленца
 
 // 0 — тверда, 1 — предупреждение (ещё тверда), 2 — призрак
 function phaseStage(group) {
@@ -132,7 +138,7 @@ function phaseStage(group) {
 let ARENA, boss, shots, waves, totalCells, cellsBank = 0, runTime = 0;
 
 // ---------- звук ----------
-const TRACKS = ['foundry', 'reactor', 'citadel', 'glacial'];
+const TRACKS = ['foundry', 'reactor', 'citadel', 'glacial', 'armada'];
 // панорама по положению источника относительно центра экрана
 const panOf = x => Math.max(-1, Math.min(1, (x - cam.x - W / 2) / (W / 2)));
 const snd = (name, x, o) => SFX.play(name, x == null ? o : Object.assign({ pan: panOf(x) }, o));
@@ -149,7 +155,9 @@ function loadLevel(idx) {
   ents = { cells: [], drones: [], crawlers: [], turrets: [], movers: [], springs: [], anim: [],
            crumbles: [], vents: [], gates: [], melt: [], phases: [], belts: [], presses: [],
            rifts: [], saws: [], leapers: [], seekers: [], cryos: [], icicles: [], gusts: [],
-           drifters: [], skaters: [], howlers: [], portal: null, spawn: { x: 16, y: 100 } };
+           drifters: [], skaters: [], howlers: [], beacons: [], rings: [], meteors: [],
+           orbiters: [], mines: [], splitters: [], shards: [],
+           portal: null, spawn: { x: 16, y: 100 } };
   checkpoints = [];
 
   levelCanvas = makeCanvas(LEVEL_W, LEVEL_H);
@@ -163,7 +171,10 @@ function loadLevel(idx) {
         else if (!isStatic(x - 1, y)) img = TL.groundLeft;
         else if (!isStatic(x + 1, y)) img = TL.groundRight;
         else img = ((x * 7 + y * 13) % 5 === 0) ? TL.groundFillVar : TL.groundFill;
-        lc.drawImage(img, px, py); break;
+        lc.drawImage(img, px, py);
+        // там, где ходят по изнанке перекрытия, нижняя грань тоже получает неон
+        if (LV.underLip && !isStatic(x, y + 1)) lc.drawImage(TL.groundUnder, px, py);
+        break;
       }
       case 'P': {
         const l = ch(x - 1, y) === 'P', r = ch(x + 1, y) === 'P';
@@ -174,7 +185,8 @@ function loadLevel(idx) {
       case '~': lc.drawImage(TL.pipeH, px, py); break;
       case 'a': lc.drawImage(TL.meltBody, px, py); ents.melt.push({ x: px, y: py, top: false }); break;
       case 'A': ents.melt.push({ x: px, y: py, top: true }); break;
-      case '^': ents.anim.push({ kind: 'spikes', x: px, y: py }); break;
+      case '^': ents.anim.push({ kind: 'spikes', x: px, y: py,
+                                down: isStatic(x, y - 1) && !isStatic(x, y + 1) }); break;
       case 'c': ents.anim.push({ kind: 'crystal', x: px, y: py }); break;
       case 'l': ents.anim.push({ kind: 'wallLight', x: px, y: py }); break;
       case 'n': ents.anim.push({ kind: 'console', x: px, y: py }); break;
@@ -259,6 +271,23 @@ function loadLevel(idx) {
       case 's': ents.skaters.push({ x: px, y: py + 5, hx: px, dir: -1, alive: true,
                                     t: Math.random() * 60 | 0, home: true }); break;
       case 'h': ents.howlers.push({ x: px, y: py, t: 0 }); break;
+      case 'F': ents.beacons.push({ x: px, y: py, inside: false, fire: 0 }); break;
+      case '(': case ')':
+        ents.rings.push({ x: px, y: py, dir: c === ')' ? 1 : -1, inside: false }); break;
+      case 'M': ents.meteors.push({ x: px, y: py, top: true }); break;
+      case 'm': ents.meteors.push({ x: px, y: py, top: false }); break;
+      case 'e': {                                  // орбитер: радиус орбиты — до ближайшей стены
+        let n = 1;
+        while (n < 2 && !isStatic(x - n, y) && !isStatic(x + n, y) &&
+               !isStatic(x, y - n) && !isStatic(x, y + n)) n++;
+        ents.orbiters.push({ cx: px + 8, cy: py + 8, rad: n * T - 6, a: (x * 0.9 + y) % 6.28,
+                             dir: (x + y) % 2 ? 1 : -1, x: px, y: py, alive: true, t: 0, home: true });
+        break;
+      }
+      case 'b': ents.mines.push({ x: px + 2, y: py + 2, hx: px + 2, hy: py + 2, vx: 0, vy: 0,
+                                  st: 0, fuse: 0, alive: true, t: 0, home: true }); break;
+      case 'q': ents.splitters.push({ x: px + 1, y: py + 1, hx: px + 1, hy: py + 1,
+                                      alive: true, t: (x * 13) % 60, home: true }); break;
     }
   }
   for (const def of LV.checkpoints) {
@@ -283,7 +312,7 @@ function loadLevel(idx) {
     ? { vert: true, left: 0, top: LV.arena.top * T, trigger: LV.arena.trigger * T,
         floorY: LV.arena.floor * T, xMin: LV.arena.x0 * T,
         xMax: LV.arena.x1 * T - BOSS_BOX[LV.boss].w }
-    : { left: (LW - 20) * T, trigger: (LW - 18) * T, floorY: 11 * T,
+    : { left: (LW - 20) * T, trigger: (LW - 18) * T, floorY: 11 * T, ceilY: (LV.ceilRows || 1) * T,
         xMin: (LW - 20) * T + 10, xMax: (LW - 6) * T - BOSS_BOX[LV.boss].w };
   boss = null;
 }
@@ -302,6 +331,13 @@ const BOSS_BOX = {
   // мгновений, когда он, выдохшись после столба, раскрывает корону на макушке.
   hoarfrost: { w: 48, h: 36, box: [5, 12, 38, 24], core: [6, 0, 36, 14],
                shield: ['wake', 'swim', 'aim', 'erupt', 'recoil'], weak: 'spent' },
+  // Нейтронное ядро висит посреди шахты: статор смертелен всегда, но, выдохшись
+  // после плоскостного луча, PULSAR разводит лепестки — и сердцевину бьют «ногами
+  // вперёд» по своей тяге: сверху при обычной, снизу при перевёрнутой.
+  // axis: заходить на сердцевину можно только вдоль своей тяги — сверху или снизу,
+  // и на этом заходе рамка не выталкивает вбок, иначе до ядра не добраться
+  pulsar: { w: 40, h: 40, box: [5, 5, 30, 30], core: [11, 11, 18, 18], axis: true,
+            shield: ['wake', 'spin', 'aim', 'beam'], weak: 'open' },
 };
 const bossDef = () => BOSS_BOX[boss.kind];
 const bossActive = () => boss.state !== 'idle' && boss.state !== 'dead';
@@ -315,6 +351,7 @@ function resetBoss() {
   const kind = LV.boss, d = BOSS_BOX[kind];
   boss = { kind, state: 'idle', hp: LV.bossHp, t: 0, timer: 0, boltT: 0, flash: 0, vy: 0, dir: -1,
            orb: null, anchorX: 0, sweep: 0, jetX: 0, arc: null, arcT: 0, flood: ARENA.floorY,
+           plane: 1, warp: 0, warpT: 0,
            x: ARENA.vert ? Math.round((ARENA.xMin + ARENA.xMax) / 2) : (LW - 10) * T + 8,
            y: ARENA.floorY - d.h + (ARENA.vert ? 14 : 0) };
   shots = []; waves = [];
@@ -351,10 +388,19 @@ function reset(full) {
   ents.skaters = ents.skaters.filter(k => k.home);
   for (const k of ents.skaters) { k.alive = true; k.dir = -1; k.x = k.hx; }
   for (const h of ents.howlers) h.t = 0;
+  for (const f of ents.beacons) { f.inside = false; f.fire = 0; }
+  for (const r of ents.rings) r.inside = false;
+  ents.orbiters = ents.orbiters.filter(o => o.home);
+  for (const o of ents.orbiters) o.alive = true;
+  ents.mines = ents.mines.filter(m => m.home);
+  for (const m of ents.mines) { m.alive = true; m.st = 0; m.x = m.hx; m.y = m.hy; m.vx = m.vy = 0; }
+  for (const s of ents.splitters) { s.alive = true; s.x = s.hx; s.y = s.hy; }
+  ents.shards = [];
   if (full || boss.state !== 'dead') resetBoss(); // побеждённый босс не воскресает на чекпоинте
   shots = [];
   P = { x: sp.x, y: sp.y, vx: 0, vy: 0, w: 10, h: 20, face: 1, grounded: false, coyote: 0, jbuf: 0,
-        animT: 0, onMover: null, squash: 0, jumping: false, lift: 0, wall: 0, lock: 0, gust: 0, dropRow: -1 };
+        animT: 0, onMover: null, squash: 0, jumping: false, lift: 0, wall: 0, lock: 0, gust: 0, dropRow: -1,
+        gdir: 1, boost: 0, flipCool: 0 };
   cam = { x: clamp(P.x - W / 2, 0, LEVEL_W - W), y: clamp(P.y - H / 2, 0, LEVEL_H - H) };
   particles = [];
   state = 'play'; deadTimer = 0; shake = 0;
@@ -428,28 +474,34 @@ function moveX(dx) {
   if (dx > 0) { const tx = Math.floor((P.x + P.w - EPS) / T); for (let ty = y1; ty <= y2; ty++) if (isSolid(tx, ty)) { P.x = tx * T - P.w; P.vx = 0; return; } }
   else if (dx < 0) { const tx = Math.floor(P.x / T); for (let ty = y1; ty <= y2; ty++) if (isSolid(tx, ty)) { P.x = (tx + 1) * T; P.vx = 0; return; } }
 }
+// Движение по вертикали симметрично относительно тяги: «ногами вперёд» — приземление,
+// «головой вперёд» — упор макушкой. При перевёрнутой тяге ногами вперёд идут вверх.
 function moveY(dy) {
-  const prevBottom = P.y + P.h;
+  const g = P.gdir, prevFeet = feetY();
   P.y += dy;
   P.grounded = false; P.onMover = null;
   const x1 = Math.floor(P.x / T), x2 = Math.floor((P.x + P.w - EPS) / T);
-  if (dy > 0) {
-    const ty = Math.floor((P.y + P.h) / T);
+  if (dy * g > 0) {                                    // ногами вперёд — можно встать
+    const ty = Math.floor((g > 0 ? P.y + P.h : P.y - EPS) / T);
+    const edge = g > 0 ? ty * T : (ty + 1) * T;        // грань, на которую встаём
     for (let tx = x1; tx <= x2; tx++) {
-      if (isSolid(tx, ty) || (isOneWay(tx, ty) && ty !== P.dropRow && prevBottom <= ty * T + 0.01)) {
-        P.y = ty * T - P.h; P.vy = 0; P.grounded = true; break;
+      if (isSolid(tx, ty) || (isOneWay(tx, ty) && ty !== P.dropRow &&
+          (g > 0 ? prevFeet <= edge + 0.01 : prevFeet >= edge - 0.01))) {
+        P.y = g > 0 ? ty * T - P.h : edge; P.vy = 0; P.grounded = true; break;
       }
     }
-    // движущиеся платформы (только сверху)
-    for (const m of ents.movers) {
+    // движущиеся платформы (только сверху и только при обычной тяге)
+    if (g > 0) for (const m of ents.movers) {
       const bottom = P.y + P.h;
-      if (P.x < m.x + m.w && P.x + P.w > m.x && prevBottom <= m.y + 0.01 + Math.max(0, m.dy) && bottom >= m.y) {
+      if (P.x < m.x + m.w && P.x + P.w > m.x && prevFeet <= m.y + 0.01 + Math.max(0, m.dy) && bottom >= m.y) {
         P.y = m.y - P.h; P.vy = 0; P.grounded = true; P.onMover = m;
       }
     }
-  } else if (dy < 0) {
-    const ty = Math.floor(P.y / T);
-    for (let tx = x1; tx <= x2; tx++) if (isSolid(tx, ty)) { P.y = (ty + 1) * T; P.vy = 0; break; }
+  } else if (dy * g < 0) {                             // головой вперёд — упор
+    const ty = Math.floor((g > 0 ? P.y : P.y + P.h - EPS) / T);
+    for (let tx = x1; tx <= x2; tx++) if (isSolid(tx, ty)) {
+      P.y = g > 0 ? (ty + 1) * T : ty * T - P.h; P.vy = 0; break;
+    }
   }
 }
 
@@ -611,13 +663,53 @@ function touchCrumbles() {                       // плита начинает 
   }
 }
 
+// Гравитационный маяк: пройти сквозь него — и тяга переворачивается.
+// Срабатывает только на входе, поэтому зависнуть внутри и мигать нельзя.
+function touchBeacons() {
+  if (P.flipCool > 0) P.flipCool--;
+  for (const f of ents.beacons) {
+    if (f.fire > 0) f.fire--;
+    const on = overlap(P, { x: f.x + 1, y: f.y + 1, w: 14, h: 14 });
+    if (!on) { f.inside = false; continue; }
+    if (f.inside) continue;
+    f.inside = true;
+    if (P.flipCool > 0) continue;               // пока летишь к другой палубе, маяки молчат
+    f.fire = 20;
+    flipGravity(f.x + 8, f.y + 8);
+  }
+}
+// Переворот тяги: общая точка для маяка и для гравишторма PULSAR
+function flipGravity(px, py) {
+  P.gdir = -P.gdir; P.flipCool = 34;
+  P.vy = 0.8 * P.gdir; P.grounded = false; P.onMover = null;
+  P.jumping = false; P.coyote = 0; P.dropRow = -1;
+  shake = 3; snd('flip', px);
+  spawnParticles(px, py, 18, [...LV.fx.lift, LV.accent2], 2.4, 0, 26);
+}
+
+// Ускорительное кольцо: бросает вдоль своей оси. Ввод на время броска
+// заблокирован, иначе встречная стрелка съедала бы разгон.
+function touchRings() {
+  for (const r of ents.rings) {
+    const on = overlap(P, { x: r.x + 2, y: r.y + 1, w: 12, h: 14 });
+    if (!on) { r.inside = false; continue; }
+    if (r.inside) continue;
+    r.inside = true;
+    P.vx = r.dir * BOOST.speed; P.face = r.dir; P.vy *= 0.25;
+    P.boost = BOOST.time; P.lock = BOOST.lock;
+    snd('boost', r.x);
+    spawnParticles(r.x + 8, r.y + 8, 14, [...LV.fx.lift, LV.accent], 2.6, 0, 22);
+  }
+}
+
 function updatePlayer() {
   // перенос платформой
   if (P.onMover) { P.x += P.onMover.dx; P.y += P.onMover.dy; }
 
   const wasGrounded = P.grounded;
   // провал сквозь решётку длится, пока её ряд не останется выше макушки
-  if (P.dropRow >= 0 && (P.grounded || P.y >= (P.dropRow + 1) * T)) P.dropRow = -1;
+  if (P.dropRow >= 0 && (P.grounded ||
+      (P.gdir > 0 ? P.y >= (P.dropRow + 1) * T : P.y + P.h <= P.dropRow * T))) P.dropRow = -1;
   // горизонталь; на наледи разгон вязкий, а тормозить почти нечем
   const icy = P.grounded && onIce();
   const ax = P.grounded ? (icy ? PHYS.iceAccel : PHYS.accel) : PHYS.airAccel;
@@ -628,17 +720,21 @@ function updatePlayer() {
   else if (inp.right()) { P.vx += ax; P.face = 1; }
   else if (P.grounded) { P.vx = Math.abs(P.vx) < fric ? 0 : P.vx - Math.sign(P.vx) * fric; }
   else P.vx *= 0.98;
-  P.vx = clamp(P.vx, -PHYS.maxSpeed, PHYS.maxSpeed);
+  // после броска кольцом потолок скорости плавно оседает к обычному
+  if (P.boost > 0) P.boost--;
+  const lim = PHYS.maxSpeed + (BOOST.speed - PHYS.maxSpeed) * (P.boost / BOOST.time);
+  P.vx = clamp(P.vx, -lim, lim);
 
   // прыжок: coyote + buffer
   P.coyote = P.grounded ? PHYS.coyote : Math.max(0, P.coyote - 1);
   P.jbuf = inp.jumpPressed() ? PHYS.buffer : Math.max(0, P.jbuf - 1);
+  const g = P.gdir;
   if (P.jbuf > 0 && P.coyote > 0) {
-    P.vy = PHYS.jump; P.coyote = 0; P.jbuf = 0; P.grounded = false; P.onMover = null; P.jumping = true;
+    P.vy = PHYS.jump * g; P.coyote = 0; P.jbuf = 0; P.grounded = false; P.onMover = null; P.jumping = true;
     SFX.play('jump');
-    spawnParticles(P.x + 5, P.y + P.h, 5, ['#6c7aa6', '#aab4d4'], 1.2, 0.05, 12);
+    spawnParticles(P.x + 5, feetY(), 5, ['#6c7aa6', '#aab4d4'], 1.2, 0.05, 12);
   } else if (P.jbuf > 0 && P.wall) {              // толчок от цепкой стены
-    P.vy = PHYS.wallJump; P.vx = -P.wall * PHYS.wallKick; P.face = -P.wall;
+    P.vy = PHYS.wallJump * g; P.vx = -P.wall * PHYS.wallKick; P.face = -P.wall;
     P.jbuf = 0; P.jumping = true; P.lock = PHYS.wallLock;
     SFX.play('wallJump');
     spawnParticles(P.x + (P.wall > 0 ? 10 : 0), P.y + 12, 7, LV.fx.lift, 1.8, 0.05, 18);
@@ -646,21 +742,21 @@ function updatePlayer() {
   }
   // «вниз» на односторонней решётке — проваливаемся сквозь неё
   if (P.grounded && !P.onMover && inp.downPressed() && onOneWay()) {
-    P.dropRow = Math.floor((P.y + P.h + EPS) / T);
+    P.dropRow = Math.floor((g > 0 ? P.y + P.h + EPS : P.y - EPS) / T);
     P.grounded = false; P.coyote = 0; P.jbuf = 0; P.jumping = false;
-    P.vy = Math.max(P.vy, PHYS.dropOff);
+    P.vy = g * Math.max(P.vy * g, PHYS.dropOff);
     SFX.play('land');
-    spawnParticles(P.x + 5, P.y + P.h, 4, ['#6c7aa6', '#aab4d4'], 1.1, 0.05, 10);
+    spawnParticles(P.x + 5, feetY(), 4, ['#6c7aa6', '#aab4d4'], 1.1, 0.05, 10);
   }
 
-  if (P.jumping && !inp.jump() && P.vy < PHYS.jumpCut) P.vy = PHYS.jumpCut; // переменная высота
-  if (P.vy >= 0) P.jumping = false;
+  if (P.jumping && !inp.jump() && P.vy * g < PHYS.jumpCut) P.vy = PHYS.jumpCut * g; // переменная высота
+  if (P.vy * g >= 0) P.jumping = false;
 
-  P.vy = Math.min(PHYS.maxFall, P.vy + PHYS.gravity);
+  P.vy = g * Math.min(PHYS.maxFall, P.vy * g + PHYS.gravity);
 
   // держась за иней цепкой стены, сползаем медленно
-  if (P.wall && P.vy > PHYS.wallSlide) {
-    P.vy = PHYS.wallSlide;
+  if (P.wall && P.vy * g > PHYS.wallSlide) {
+    P.vy = PHYS.wallSlide * g;
     if (frame % 5 === 0)
       spawnParticles(P.x + (P.wall > 0 ? 10 : 0), P.y + 14, 1, ['#f0ffff', '#a5d8e2'], 0.8, 0.06, 14);
   }
@@ -679,6 +775,8 @@ function updatePlayer() {
   beltPush();
   gustPush();
   touchCrumbles();
+  touchBeacons();
+  touchRings();
   wallGrip();
   if (bossActive()) {                              // энергобарьер арены: сбоку или над головой
     if (ARENA.vert) { if (P.y < ARENA.top + 14) { P.y = ARENA.top + 14; P.vy = Math.max(0, P.vy); } }
@@ -687,7 +785,7 @@ function updatePlayer() {
 
   if (P.grounded && !wasGrounded) {
     P.squash = 6; SFX.play('land');
-    spawnParticles(P.x + 5, P.y + P.h, 6, ['#6c7aa6', '#aab4d4'], 1.5, 0.05, 14);
+    spawnParticles(P.x + 5, feetY(), 6, ['#6c7aa6', '#aab4d4'], 1.5, 0.05, 14);
   }
   if (P.squash > 0) P.squash--;
 
@@ -695,8 +793,10 @@ function updatePlayer() {
   for (const s of ents.springs) {
     if (s.timer > 0) s.timer--;
     const box = { x: s.x + 2, y: s.y + 4, w: 12, h: 12 };
-    if (P.vy >= 0 && overlap({ x: P.x, y: P.y + P.h - 4, w: P.w, h: 4 }, box)) {
-      P.vy = PHYS.spring; P.grounded = false; P.onMover = null; P.jumping = false; s.timer = 12; P.y = s.y + 4 - P.h;
+    const feet = { x: P.x, y: g > 0 ? P.y + P.h - 4 : P.y, w: P.w, h: 4 };
+    if (P.vy * g >= 0 && overlap(feet, box)) {
+      P.vy = PHYS.spring * g; P.grounded = false; P.onMover = null; P.jumping = false; s.timer = 12;
+      P.y = g > 0 ? s.y + 4 - P.h : s.y + 12;
       snd('spring', s.x);
       spawnParticles(s.x + 8, s.y + 6, 10, ['#ffe14a', '#ff9a2e'], 2, 0.08, 20);
     }
@@ -722,10 +822,12 @@ function updatePlayer() {
 
   // опасности
   const hit = { x: P.x + 1, y: P.y + 2, w: P.w - 2, h: P.h - 3 };
-  for (const a of ents.anim) if (a.kind === 'spikes' && overlap(hit, { x: a.x + 1, y: a.y + 2, w: 14, h: 10 })) die();
+  for (const a of ents.anim)
+    if (a.kind === 'spikes' && overlap(hit, { x: a.x + 1, y: a.y + (a.down ? 4 : 2), w: 14, h: 10 })) die();
   for (const m of ents.melt) if (overlap(hit, { x: m.x, y: m.y + (m.top ? 5 : 0), w: T, h: m.top ? T - 5 : T })) die();
   for (const r of ents.rifts) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 4 : 0), w: T, h: r.top ? T - 4 : T })) die();
   for (const r of ents.cryos) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 5 : 0), w: T, h: r.top ? T - 5 : T })) die();
+  for (const r of ents.meteors) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 5 : 0), w: T, h: r.top ? T - 5 : T })) die();
   for (const i of ents.icicles) if (i.st === 2 && overlap(hit, { x: i.x + 5, y: i.y + 1, w: 6, h: 14 })) die();
   for (const h of ents.howlers) if (overlap(hit, { x: h.x + 2, y: h.y + 2, w: 12, h: 12 })) die();
   for (const p of ents.presses) if (overlap(hit, { x: p.x + 1, y: p.y, w: 14, h: 16 })) die();
@@ -780,8 +882,34 @@ function updatePlayer() {
       spawnParticles(k.x + 8, k.y + 6, 24, [...LV.fx.dust, '#ff3b3b', '#f0ffff'], 3, 0.12, 36);
     }
   }
+  for (const o of ents.orbiters) {
+    if (!o.alive) continue;
+    if (stompOrDie(hit, { x: o.x + 1, y: o.y + 2, w: 10, h: 8 }, o.y + 4)) {
+      o.alive = false;
+      spawnParticles(o.x + 6, o.y + 6, 22, [...LV.fx.dust, '#ff3b3b', '#2ef0c4'], 3, 0.12, 34);
+    }
+  }
+  for (const m of ents.mines) {
+    if (!m.alive) continue;
+    if (stompOrDie(hit, { x: m.x + 1, y: m.y + 1, w: 10, h: 10 }, m.y + 4)) {
+      m.alive = false;
+      snd('crack', m.x);
+      spawnParticles(m.x + 6, m.y + 6, 24, [...LV.fx.dust, '#ffd166', '#fff3e2'], 3, 0.1, 34);
+    }
+  }
+  for (const s of ents.splitters) {
+    if (!s.alive) continue;
+    if (stompOrDie(hit, { x: s.x + 1, y: s.y + 1, w: 12, h: 12 }, s.y + 5)) splitSplitter(s);
+  }
+  for (const s of ents.shards) {
+    if (!s.alive) continue;
+    if (stompOrDie(hit, { x: s.x, y: s.y, w: 8, h: 8 }, s.y + 3)) {
+      s.alive = false;
+      spawnParticles(s.x + 4, s.y + 4, 14, ['#ff7bd5', ...LV.fx.lift], 2.4, 0.1, 26);
+    }
+  }
   bossHazards(hit);
-  if (P.y > LEVEL_H + 8) die();
+  if (P.y > LEVEL_H + 8 || P.y + P.h < -8) die();
 
   // портал (закрыт, пока жив босс)
   const pt = ents.portal;
@@ -793,11 +921,13 @@ function updatePlayer() {
   // анимация
   P.animT += Math.abs(P.vx) > 0.3 ? Math.abs(P.vx) * 0.55 : 0.15;
 }
-// прыжок сверху убивает врага, иначе смерть игрока
+// Прыжок «ногами вперёд» убивает врага, иначе смерть игрока. При перевёрнутой
+// тяге ноги идут вверх, поэтому та же проверка зеркалится относительно рамки.
 function stompOrDie(hit, box, topY) {
   if (!overlap(hit, box)) return false;
-  if (P.vy > 0 && P.y + P.h - P.vy <= topY) {
-    P.vy = -4.2; P.jumping = false; shake = 3; snd('stomp', box.x); return true;
+  const g = P.gdir, lim = g > 0 ? topY : box.y + box.h - (topY - box.y);
+  if (P.vy * g > 0 && (feetY() - P.vy) * g <= lim * g) {
+    P.vy = -4.2 * g; P.jumping = false; shake = 3; snd('stomp', box.x); return true;
   }
   die(); return false;
 }
@@ -916,6 +1046,71 @@ function updateHowlers() {
 }
 const howlerCharging = h => h.t >= 18;
 
+// Орбитер: спутник-дрон ходит по кругу вокруг своего якоря
+function updateOrbiters() {
+  for (const o of ents.orbiters) {
+    if (!o.alive) continue;
+    o.t++;
+    o.a += o.dir * 0.025;
+    o.x = o.cx + Math.cos(o.a) * o.rad - 6;
+    o.y = o.cy + Math.sin(o.a) * o.rad - 6;
+  }
+}
+// Дрейф-мина: ползёт к игроку, вблизи взводится и лопается веером осколков.
+// Успел приземлиться на неё «ногами вперёд» — расколол до взрыва.
+function updateMines() {
+  for (const m of ents.mines) {
+    if (!m.alive) continue;
+    m.t++;
+    if (!onScreen(m.x, m.y) || state !== 'play') { m.st = 0; continue; }
+    const dx = P.x + P.w / 2 - (m.x + 6), dy = P.y + P.h / 2 - (m.y + 6);
+    const d = Math.hypot(dx, dy) || 1;
+    m.vx = clamp(m.vx + dx / d * 0.02, -MINEC.speed, MINEC.speed);
+    m.vy = clamp(m.vy + dy / d * 0.02, -MINEC.speed, MINEC.speed);
+    const nx = m.x + m.vx, ny = m.y + m.vy;
+    if (!isSolid(Math.floor((nx + 6) / T), Math.floor((m.y + 6) / T))) m.x = nx; else m.vx = 0;
+    if (!isSolid(Math.floor((m.x + 6) / T), Math.floor((ny + 6) / T))) m.y = ny; else m.vy = 0;
+    if (m.st === 0) {
+      if (d < MINEC.near) { m.st = 1; m.fuse = MINEC.fuse; snd('mineArm', m.x); }
+    } else if (--m.fuse <= 0) mineBlast(m);
+  }
+}
+function mineBlast(m) {
+  m.alive = false; shake = 4;
+  for (let i = 0; i < MINEC.shards; i++) {
+    const a = i * Math.PI * 2 / MINEC.shards + 0.5;
+    shots.push({ x: m.x + 6 + Math.cos(a) * 7, y: m.y + 6 + Math.sin(a) * 7,
+                 vx: Math.cos(a) * MINEC.shot, vy: Math.sin(a) * MINEC.shot, g: 0.03, r: 2, life: 100,
+                 cols: ['#a8471a', '#ff8a3c', '#ffe0a8'] });
+  }
+  snd('boom', m.x);
+  spawnParticles(m.x + 6, m.y + 6, 22, [...LV.fx.dust, '#ff8a3c', '#ffe0a8'], 3, 0.05, 30);
+}
+// Деленец: прыжок сверху не убивает его, а раскалывает надвое —
+// осколки разлетаются и живут своей жизнью, пока их не дотопчут
+function splitSplitter(s) {
+  s.alive = false;
+  for (const d of [-1, 1]) ents.shards.push({ x: s.x + 3, y: s.y + 3, vx: d * SHARD.vx, vy: SHARD.vy,
+                                              life: SHARD.life, alive: true, t: 0 });
+  snd('split', s.x);
+  spawnParticles(s.x + 7, s.y + 7, 20, ['#ff7bd5', ...LV.fx.lift], 2.8, 0.06, 28);
+}
+function updateSplitters() {
+  for (const s of ents.splitters) if (s.alive) s.t++;
+  for (const s of ents.shards) {
+    s.t++;
+    s.vy = Math.min(PHYS.maxFall, s.vy + 0.14);
+    const nx = s.x + s.vx;
+    if (isSolid(Math.floor((s.vx > 0 ? nx + 8 : nx) / T), Math.floor((s.y + 4) / T))) s.vx *= -1;
+    else s.x = nx;
+    const ny = s.y + s.vy;
+    if (isSolid(Math.floor((s.x + 4) / T), Math.floor((s.vy > 0 ? ny + 8 : ny) / T))) s.vy *= -0.55;
+    else s.y = ny;
+    if (--s.life <= 0 || s.y > LEVEL_H + 16) s.alive = false;
+  }
+  ents.shards = ents.shards.filter(s => s.alive);
+}
+
 function updateTurrets() {
   for (const t of ents.turrets) {
     if (!t.alive) continue;
@@ -948,10 +1143,12 @@ function bossHazards(hit) {
   const b = boss, d = bossDef();
   if (b.state !== 'idle' && b.state !== 'dead' && b.state !== 'dying' && b.state !== d.ghost) {
     const box = bossBox(), push = () => { P.x = P.x + P.w / 2 < box.x + box.w / 2 ? box.x - P.w : box.x + box.w; P.vx = 0; };
-    if (b.state === d.weak) {                                      // броня раскрыта: ядро сверху уязвимо
+    if (b.state === d.weak) {                                      // броня раскрыта: ядро уязвимо
       const core = bossRect('core');
-      if (overlap(hit, core) && P.vy > 0 && P.y + P.h - P.vy <= core.y + core.h) hitBoss();
-      else if (overlap(hit, box)) push();
+      const g = P.gdir, lim = g > 0 ? core.y + core.h : core.y;   // бьют «ногами вперёд» по своей тяге
+      if (overlap(hit, core) && P.vy * g > 0 && (feetY() - P.vy) * g <= lim * g) hitBoss();
+      else if (overlap(hit, box) &&
+               !(d.axis && hit.x + hit.w > core.x && hit.x < core.x + core.w)) push();
     } else if (overlap(hit, box)) {
       if (d.shield.includes(b.state)) die();                       // броня/щит — касание смертельно
       else push();
@@ -964,6 +1161,7 @@ function bossHazards(hit) {
     if (b.state === 'erupt' && overlap(hit, hoarJet())) die();
     if (b.arc && b.arc.st === 1 && overlap(hit, hoarArc())) die();
   }
+  if (b.kind === 'pulsar' && b.state === 'beam' && overlap(hit, pulsarBeam())) die();
   if (b.kind === 'sovereign' && b.orb) {                            // осколок: сверху — отбить, сбоку — отброс
     const o = b.orb;
     if (o.mode !== 'back' && overlap(hit, { x: o.x - 6, y: o.y - 6, w: 12, h: 12 })) {
@@ -981,7 +1179,10 @@ function bossAwake() {                              // общий вход в б
 function hitBoss(bounce = true) {
   const b = boss;
   b.hp--; b.flash = 14; shake = 6; SFX.play('bossHit');
-  if (bounce) { P.vy = -5; P.jumping = false; }        // корону бьёт её же осколок — игрока не подбрасывает
+  if (b.kind === 'pulsar') {                           // разряд сердцевины переворачивает тягу и отшвыривает
+    flipGravity(P.x + 5, P.y + 10);
+    P.vy = 4.2 * P.gdir; P.jumping = false;
+  } else if (bounce) { P.vy = -5; P.jumping = false; } // корону бьёт её же осколок — игрока не подбрасывает
   if (b.kind === 'hoarfrost') b.flood = Math.min(ARENA.floorY, b.flood + FLOOD.drain); // взвесь отступает
   spawnParticles(b.x + bossDef().w / 2, b.y + 4, 24, ['#4dff88', '#e6ecff', '#ffe14a'], 3, 0.1, 30);
   b.arc = null;                                        // сбитое деление гасит копящийся разряд
@@ -1012,7 +1213,8 @@ function updateBoss() {
   } else if (b.kind === 'warden') updateWarden();
   else if (b.kind === 'rootmind') updateRootmind();
   else if (b.kind === 'sovereign') updateSovereign();
-  else updateHoarfrost();
+  else if (b.kind === 'hoarfrost') updateHoarfrost();
+  else updatePulsar();
   updateShots();
   for (const w of waves) { w.x += w.dir * 2.4; w.t++; }
   waves = waves.filter(w => w.x > ARENA.left + 18 && w.x < (LW - 6) * T - 4);
@@ -1486,6 +1688,124 @@ function updateHoarfrost() {
   }
 }
 
+// ---------- босс 5: PULSAR (NOVA ARMADA) ----------
+//  Бой идёт не вдоль арены и не вверх по ней, а поперёк тяги. Нейтронное ядро
+//  висит посреди шахты, а шахта — это две палубы: пол и изнанка перекрытия.
+//  PULSAR размечает ту половину, где стоит игрок, и выжигает её лучом от плоскости
+//  до середины: уйти можно только маяком — на другую палубу. Выдохшись, он разводит
+//  лепестки, и сердцевину бьют «ногами вперёд» по своей тяге: падая сверху при
+//  обычной или взлетая снизу при перевёрнутой. Каждое попадание само переворачивает
+//  тягу и отшвыривает от ядра — вплотную к раскалённому статору не остаться.
+//  Со второго деления добавляется гравишторм: после телеграфа PULSAR переворачивает
+//  тягу сам, посреди пробежки, и половину приходится менять не по своей воле.
+const PULS = { spin: 210, aim: 92, beam: 74, open: 150, warp: 52, warpGap: 400 };
+const pulsMid = () => (ARENA.ceilY + ARENA.floorY) / 2;
+const pulsHome = () => pulsMid() - 20;                  // середина шахты, где висит ядро
+// луч выжигает половину шахты — от размеченной плоскости до середины
+function pulsarBeam() {
+  const m = pulsMid();
+  return boss.plane > 0
+    ? { x: ARENA.left, y: m, w: LEVEL_W - ARENA.left, h: ARENA.floorY - m }
+    : { x: ARENA.left, y: ARENA.ceilY, w: LEVEL_W - ARENA.left, h: m - ARENA.ceilY };
+}
+
+function firePulse() {                                  // тройной веер, разворачивающийся по кругу
+  const b = boss, cx = b.x + 20, cy = b.y + 20, spd = 1.7 + bossRage() * 0.12;
+  for (let i = 0; i < 3; i++) {
+    const a = b.t * 0.09 + i * Math.PI * 2 / 3;
+    shots.push({ x: cx + Math.cos(a) * 18, y: cy + Math.sin(a) * 18,
+                 vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, g: 0, r: 2, life: 300,
+                 cols: ['#8a1a1a', '#ff3b3b', '#e6ecff'] });
+  }
+  snd('bossShot', cx);
+  spawnParticles(cx, cy, 5, ['#ff3b3b', '#ffd166'], 1.2, 0, 12);
+}
+function spawnOrbiter(side) {                           // израненный статор сбрасывает спутники
+  // слева отступаем от энергобарьера: орбита не должна уезжать за него
+  const x = side < 0 ? ARENA.left + 44 : LEVEL_W - 5 * T, y = pulsMid() - 6;
+  ents.orbiters.push({ cx: x + 6, cy: y + 6, rad: 26, a: side > 0 ? Math.PI : 0, dir: side,
+                       x, y, alive: true, t: 0, home: false });
+  snd('spawn', x);
+  spawnParticles(x + 6, y + 6, 14, ['#2ef0c4', '#8f7dff'], 2, 0.02, 26);
+}
+
+function updatePulsar() {
+  const b = boss, rage = bossRage();
+  const drift = (tx, ty, sx, sy) => {
+    b.x += clamp(tx - b.x, -sx, sx);
+    b.y += clamp(ty - b.y, -sy, sy);
+  };
+  const trackX = () => clamp(P.x + P.w / 2 - 20, ARENA.xMin, ARENA.xMax);
+  switch (b.state) {
+    case 'idle':
+      if (state === 'play' && P.x >= ARENA.trigger) { bossAwake(); b.timer = 105; b.warp = PULS.warpGap; }
+      break;
+    case 'wake':                                        // снимается со стапеля и выходит в центр
+      if (b.timer > 60) b.x += (frame % 2 ? 1 : -1) * 0.5;
+      else drift(b.x, pulsHome(), 0, 1.6);
+      if (b.timer % 9 === 0) spawnParticles(b.x + 20, b.y + 36, 6, ['#2ef0c4', '#8f7dff'], 2, 0.05, 24);
+      if (--b.timer <= 0) { b.state = 'spin'; b.timer = PULS.spin; b.boltT = 55; }
+      break;
+    case 'spin':                                        // раскручен: веера искр и гравишторм
+      drift(trackX(), pulsHome() + Math.sin(b.t / 24) * 5, 0.6 + rage * 0.14, 0.8);
+      if (--b.boltT <= 0) { firePulse(); b.boltT = 96 - rage * 12; }
+      if (b.warpT > 0) {
+        if (b.warpT % 6 === 0) spawnParticles(P.x + 5, P.y + 10, 3, ['#8f7dff', '#fff3e2'], 2.2, 0, 20);
+        if (--b.warpT === 0) { flipGravity(P.x + 5, P.y + 10); shake = 6; }
+      } else if (rage >= 1 && b.timer > PULS.warp + 40 && --b.warp <= 0) {
+        b.warpT = PULS.warp; b.warp = PULS.warpGap - rage * 60; snd('tell', b.x);
+      }
+      if (--b.timer <= 0) {
+        b.state = 'aim'; b.timer = PULS.aim - rage * 4; b.warpT = 0;
+        b.plane = P.y + P.h / 2 > pulsMid() ? 1 : -1;   // размечается половина, где игрок
+        // к плоскости он идёт не на голову игроку, а в сторону: на палубе его
+        // не задавишь, и место, куда прыгать в окне open, видно заранее
+        let ax = b.x;
+        for (let i = 0; i < 12; i++) {
+          ax = ARENA.xMin + Math.random() * (ARENA.xMax - ARENA.xMin);
+          if (Math.abs(ax + 20 - (P.x + P.w / 2)) > 70) break;
+        }
+        b.anchorX = ax;
+        snd('tell', b.x);
+      }
+      break;
+    case 'aim': {                                       // прижимается к плоскости — телеграф
+      drift(b.anchorX, b.plane > 0 ? ARENA.floorY - 46 : ARENA.ceilY + 6, 1.6, 2.0);
+      if (b.timer % 7 === 0) {
+        const z = pulsarBeam();
+        spawnParticles(z.x + Math.random() * z.w, b.plane > 0 ? z.y + z.h - 4 : z.y + 4,
+                       2, ['#ffd166', '#fff3e2'], 1.8, 0, 20);
+      }
+      if (--b.timer <= 0) { b.state = 'beam'; b.timer = PULS.beam + rage * 6; snd('jet', b.x); shake = 7; }
+      break;
+    }
+    case 'beam': {                                      // половина шахты выжжена
+      drift(b.anchorX, b.plane > 0 ? ARENA.floorY - 46 : ARENA.ceilY + 6, 0.6, 1.0);
+      const z = pulsarBeam();
+      if (frame % 3 === 0)
+        spawnParticles(z.x + Math.random() * z.w, z.y + Math.random() * z.h,
+                       2, ['#fff3e2', '#ff8a3c'], 1.6, 0, 18);
+      if (--b.timer <= 0) { b.state = 'open'; b.timer = PULS.open - rage * 14; SFX.play('bossOpen'); }
+      break;
+    }
+    case 'open':                                        // лепестки разведены — сердцевина уязвима
+      drift(b.x, pulsHome() + Math.sin(b.t / 10) * 2, 0, 1.4);
+      if (b.t % 10 === 0) spawnParticles(b.x + 20, b.y + 20, 4, ['#ff7bd5', '#fff3e2'], 2, 0, 22);
+      if (--b.timer <= 0) { b.state = 'spin'; b.timer = PULS.spin - rage * 18; b.boltT = 70; }
+      break;
+    case 'recoil':
+      b.x += (frame % 2 ? 1 : -1) * 0.7;
+      drift(b.x, pulsHome(), 0, 1.2);
+      if (b.timer % 6 === 0)
+        spawnParticles(b.x + 20, b.y + 20, 6, ['#2ef0c4', '#fff3e2', '#8f7dff'], 2.6, 0.03, 24);
+      if (--b.timer <= 0) {
+        b.state = 'spin'; b.timer = PULS.spin - rage * 18; b.boltT = 60;
+        if (rage >= 3) { spawnOrbiter(-1); spawnOrbiter(1); }   // израненный зовёт спутники
+      }
+      break;
+  }
+}
+
 // ---------- главный такт ----------
 function update() {
   frame++;
@@ -1498,6 +1818,9 @@ function update() {
   updateDrifters();
   updateSkaters();
   updateHowlers();
+  updateOrbiters();
+  updateMines();
+  updateSplitters();
   updateCrumbles();
   updatePresses();
   updateSaws();
@@ -1531,8 +1854,9 @@ function update() {
   const orb = boss.kind === 'sovereign' ? boss.orb : null;
   SFX.loop('tether', state === 'play' && !!orb && orb.mode !== 'back', { pan: panOf(orb ? orb.x : 0) });
   SFX.loop('blow', state === 'play' && ents.gusts.some(q => q.w && gustStage(q) === 2 && onScreen(q.x, q.y)));
-  SFX.loop('jet', state === 'play' && boss.kind === 'hoarfrost' && boss.state === 'erupt',
-           { pan: panOf(boss.jetX) });
+  SFX.loop('jet', state === 'play' && ((boss.kind === 'hoarfrost' && boss.state === 'erupt') ||
+           (boss.kind === 'pulsar' && boss.state === 'beam')),
+           { pan: panOf(boss.kind === 'pulsar' ? boss.x + 20 : boss.jetX) });
   if (pressed.KeyC) { const s = document.getElementById('scan'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
   // камера: по горизонтали смотрит вперёд по бегу, по вертикали — вслед за падением
   const tx = bossActive() && !ARENA.vert ? LEVEL_W - W : P.x + P.w / 2 - W / 2 + (VERT ? 0 : P.face * 24);
@@ -1596,6 +1920,11 @@ function draw() {
     ctx.drawImage(r.top ? A.cryo.top[Math.floor((frame + r.x / 8) / 10) % 3]
                         : A.cryo.body[Math.floor((frame + r.y) / 14) % 2], r.x, r.y);
   }
+  for (const r of ents.meteors) {
+    if (!onScreen(r.x, r.y)) continue;
+    ctx.drawImage(r.top ? A.meteor.top[Math.floor((frame + r.x / 6) / 7) % 3]
+                        : A.meteor.body[Math.floor((frame + r.y) / 10) % 2], r.x, r.y);
+  }
 
   // тайлы
   ctx.drawImage(levelCanvas, cx, cy, W, H, cx, cy, W, H);
@@ -1616,7 +1945,8 @@ function draw() {
     ctx.drawImage(TL.meltTop[Math.floor((frame + m.x / 8) / 12) % 2], m.x, m.y);
 
   // шипы, пружины, вентиляторы, осыпающиеся плиты
-  for (const a of ents.anim) if (a.kind === 'spikes' && onScreen(a.x, a.y)) ctx.drawImage(TL.spikes[Math.floor((frame + a.x / 4) / 10) % 2], a.x, a.y);
+  for (const a of ents.anim) if (a.kind === 'spikes' && onScreen(a.x, a.y))
+    ctx.drawImage((a.down ? TL.spikesDown : TL.spikes)[Math.floor((frame + a.x / 4) / 10) % 2], a.x, a.y);
   for (const s of ents.springs) ctx.drawImage(TL.spring[s.timer > 6 ? 1 : 0], s.x, s.y);
   for (const v of ents.vents) {
     if (!onScreen(v.x, v.y)) continue;
@@ -1685,6 +2015,24 @@ function draw() {
     }
   }
 
+  // гравитационные маяки и ускорительные кольца
+  for (const f of ents.beacons) {
+    if (!onScreen(f.x, f.y)) continue;
+    ctx.drawImage(TL.beacon[f.fire > 0 ? 2 : Math.floor(frame / 9) % 2], f.x, f.y);
+    if (f.fire > 0) {                                   // сработавший маяк расходится кольцом
+      const r = (20 - f.fire) * 1.2;
+      ctx.fillStyle = f.fire % 4 < 2 ? '#fff3e2' : LV.accent2;
+      for (let i = 0; i < 12; i++) {
+        const a = i * Math.PI / 6;
+        ctx.fillRect(Math.round(f.x + 8 + Math.cos(a) * r), Math.round(f.y + 8 + Math.sin(a) * r), 2, 2);
+      }
+    }
+  }
+  for (const r of ents.rings) {
+    if (!onScreen(r.x, r.y)) continue;
+    ctx.drawImage(TL.ring[r.dir > 0 ? 1 : 0][Math.floor(frame / 4) % 4], r.x, r.y);
+  }
+
   // движущиеся платформы
   for (const m of ents.movers) {
     ctx.drawImage(TH.moving, Math.round(m.x), Math.round(m.y));
@@ -1723,6 +2071,35 @@ function draw() {
     if (!onScreen(h.x, h.y)) continue;
     const sh = howlerCharging(h) && frame % 4 < 2 ? 1 : 0;
     ctx.drawImage(TH.howler[howlerCharging(h) ? 1 : 0][0], h.x + sh, h.y);
+  }
+  for (const o of ents.orbiters) {
+    if (!o.alive || !onScreen(o.x, o.y)) continue;
+    ctx.drawImage(TH.orbiter[Math.floor(o.t / 7) % 2][Math.cos(o.a) * o.dir > 0 ? 0 : 1],
+                  Math.round(o.x), Math.round(o.y));
+    if (o.t % 3 === 0) {                                // тонкий след по орбите
+      ctx.fillStyle = frame % 6 < 3 ? '#2ef0c4' : '#0b7a6a';
+      ctx.fillRect(Math.round(o.cx + Math.cos(o.a - o.dir * 0.5) * o.rad) - 1,
+                   Math.round(o.cy + Math.sin(o.a - o.dir * 0.5) * o.rad) - 1, 2, 2);
+    }
+  }
+  for (const m of ents.mines) {
+    if (!m.alive || !onScreen(m.x, m.y)) continue;
+    const armed = m.st === 1, sh = armed && frame % 4 < 2 ? 1 : 0;
+    const fast = armed && m.fuse < MINEC.fuse / 2;
+    ctx.drawImage(TH.mine[armed ? 2 + (Math.floor(frame / (fast ? 3 : 6)) % 2) : Math.floor(m.t / 14) % 2][0],
+                  Math.round(m.x) + sh, Math.round(m.y));
+  }
+  for (const s of ents.splitters) {
+    if (!s.alive || !onScreen(s.x, s.y)) continue;
+    const bob = Math.round(Math.sin(s.t / 18) * 2);
+    ctx.drawImage(TH.splitter[Math.floor(s.t / 12) % 2][0], Math.round(s.x), Math.round(s.y) + bob);
+  }
+  for (const s of ents.shards) {
+    if (!onScreen(s.x, s.y)) continue;
+    const dim = s.life < 60 && frame % 6 < 3;
+    if (dim) ctx.globalAlpha = 0.45;
+    ctx.drawImage(TH.shard[Math.floor(s.t / 6) % 2][s.vx > 0 ? 0 : 1], Math.round(s.x), Math.round(s.y));
+    ctx.globalAlpha = 1;
   }
 
   // лазерные затворы
@@ -1821,6 +2198,36 @@ function draw() {
     }
   }
 
+  // PULSAR: размеченная (телеграф) и выжженная половина шахты
+  if (boss.kind === 'pulsar' && (boss.state === 'aim' || boss.state === 'beam')) {
+    const z = pulsarBeam(), warn = boss.state === 'aim';
+    const deck = boss.plane > 0 ? z.y + z.h : z.y;      // палуба, вдоль которой бьёт
+    const edge = boss.plane > 0 ? z.y : z.y + z.h;      // граница с живой половиной
+    ctx.globalAlpha = warn ? 0.16 : 0.4;
+    ctx.fillStyle = warn ? '#ffd166' : '#a8471a';
+    for (let y = z.y; y < z.y + z.h; y += 2) ctx.fillRect(z.x, y, z.w, 1);
+    ctx.globalAlpha = 1;
+    if (warn) {
+      if (frame % 6 < 3) {                              // пунктир по границе — «сюда не ходи»
+        ctx.fillStyle = '#ffd166';
+        for (let x = z.x; x < z.x + z.w; x += 8) ctx.fillRect(x, edge - 1, 4, 2);
+      }
+    } else {
+      ctx.fillStyle = '#ff8a3c';
+      ctx.fillRect(z.x, deck - (boss.plane > 0 ? 7 : 0), z.w, 7);
+      ctx.fillStyle = frame % 4 < 2 ? '#ffe0a8' : '#fff3e2';
+      ctx.fillRect(z.x, deck - (boss.plane > 0 ? 4 : 0), z.w, 3);
+      for (let i = 0; i < 26; i++) {                    // струи вдоль плоскости
+        const x = z.x + ((i * 37 + frame * 7) % z.w);
+        const y = z.y + 3 + ((i * 13 + Math.floor(frame / 2)) % Math.max(1, z.h - 6));
+        ctx.fillStyle = i % 3 ? '#ff8a3c' : '#ffe0a8';
+        ctx.fillRect(Math.round(x), Math.round(y), 6, 1);
+      }
+      ctx.fillStyle = frame % 4 < 2 ? '#ffe0a8' : '#a8471a';
+      for (let x = z.x; x < z.x + z.w; x += 4) ctx.fillRect(x + (frame % 4), edge - 1, 2, 2);
+    }
+  }
+
   // энергобарьер арены: у вертикальной шахты он не сбоку, а над головой
   if (bossActive()) {
     if (ARENA.vert) {
@@ -1848,10 +2255,13 @@ function draw() {
     const img = A.player[key][P.face > 0 ? 0 : 1];
     const bob = (key === 'run1') ? -1 : 0;
     const dx = Math.round(P.x) - 3, dy = Math.round(P.y) + bob;
+    ctx.save();
+    if (P.gdir < 0) { ctx.translate(0, dy * 2 + 20); ctx.scale(1, -1); }   // ходит по изнанке палубы
     if (P.squash > 0) {  // сплющивание при приземлении
       const s = P.squash / 6;
       ctx.drawImage(img, 0, 0, 16, 20, dx - Math.round(2 * s), dy + Math.round(3 * s), 16 + Math.round(4 * s), 20 - Math.round(3 * s));
     } else ctx.drawImage(img, dx, dy);
+    ctx.restore();
   }
 
   // снаряды
@@ -1880,7 +2290,8 @@ function drawBoss() {
   const b = boss, d = bossDef();
   if (b.state === 'dead') return;
   const img = b.kind === 'warden' ? wardenFrame() : b.kind === 'rootmind' ? rootmindFrame()
-            : b.kind === 'sovereign' ? sovereignFrame() : hoarfrostFrame();
+            : b.kind === 'sovereign' ? sovereignFrame()
+            : b.kind === 'hoarfrost' ? hoarfrostFrame() : pulsarFrame();
   const bx = Math.round(b.x), by = Math.round(b.y);
   // шаг сквозь пространство: растворился — проявился на новом месте
   if (b.state === d.ghost) ctx.globalAlpha = b.timer > 20 ? (b.timer - 20) / 20 : 1 - b.timer / 20;
@@ -2002,6 +2413,21 @@ function hoarfrostFrame() {
   }
 }
 
+function pulsarFrame() {
+  const b = boss, S = A.boss5, sp = Math.floor(b.t / 5) % 4;
+  if (b.flash > 0 && b.flash % 4 < 2) return S.flash;
+  switch (b.state) {
+    case 'idle': return S.dormant[0];
+    case 'wake': return (b.t % 12 < 6 ? S.dormant : S.live)[sp];
+    case 'aim': return S.tell[sp];
+    case 'beam': return S.hot[sp];
+    case 'open': return S.open[sp];
+    case 'recoil': return S.dormant[sp];
+    case 'dying': return S.open[sp];
+    default: return S.live[sp];                 // spin
+  }
+}
+
 // ---------- HUD ----------
 function drawHud() {
   const got = ents.cells.filter(c => c.taken).length;
@@ -2069,6 +2495,7 @@ function drawHud() {
 // отладочный доступ к состоянию (для автотестов)
 window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
   boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y),
+          plane: boss.plane,
           orb: boss.orb && { x: Math.round(boss.orb.x), y: Math.round(boss.orb.y), mode: boss.orb.mode,
                              life: boss.orb.life, cool: boss.orb.cool, inColumn: sovInColumn(boss.orb.x) },
           arc: boss.arc && { x: boss.arc.x, st: boss.arc.st, t: boss.arc.t } },
@@ -2077,12 +2504,22 @@ window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy,
   crawlers: ents.crawlers.filter(c => c.alive).length, turrets: ents.turrets.filter(t => t.alive).length,
   crumbles: ents.crumbles.map(c => c.st), frame, jumping: P.jumping, coyote: P.coyote, jbuf: P.jbuf,
   cam: { x: Math.round(cam.x), y: Math.round(cam.y) }, wall: P.wall, gust: P.gust, ice: P.grounded && onIce(),
+  gdir: P.gdir, boost: Math.round(P.boost),
+  orbiters: ents.orbiters.filter(o => o.alive).length, mines: ents.mines.filter(m => m.alive).length,
+  splitters: ents.splitters.filter(s => s.alive).length, shards: ents.shards.length,
   icicles: ents.icicles.map(i => i.st), drifters: ents.drifters.filter(d => d.alive).length,
   skaters: ents.skaters.filter(k => k.alive).length, flood: Math.round(boss.flood || 0),
   leapers: ents.leapers.filter(l => l.alive).length, seekers: ents.seekers.filter(k => k.alive).length,
   presses: ents.presses.map(p => p.st), phase: [phaseStage(0), phaseStage(1)],
   mov: ents.movers.map(m => [Math.round(m.x), Math.round(m.y)]) });
 window.__keys = keys;
+// поставить игрока в заданную точку с заданным направлением тяги (для автотестов
+// проходимости: движок гоняется headless и перебирает планы ввода)
+window.__place = (x, y, gdir) => {
+  reset(false);
+  P.x = x; P.y = y; P.vx = 0; P.vy = 0; P.gdir = gdir || 1; P.grounded = true;
+  camSnap(); intro = 0; elapsed = 0;
+};
 
 // ---------- цикл ----------
 let acc = 0, last = performance.now();

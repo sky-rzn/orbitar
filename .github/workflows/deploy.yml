@@ -41,6 +41,7 @@ jobs:
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
             --exclude '.git*' --exclude 'deploy/' --exclude 'README.md' \
+            --exclude 'tools/' \
             --exclude 'claude-container.sh' --exclude '.claude-container/' \
             --delete-excluded \
             ./ "$DEPLOY_USER@$HOST:/var/www/orbitar/"
