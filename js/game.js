@@ -718,10 +718,13 @@ function bossHazards(hit) {
   }
   for (const s of shots) if (overlap(hit, { x: s.x - s.r, y: s.y - s.r, w: s.r * 2, h: s.r * 2 })) die();
   for (const w of waves) if (overlap(hit, { x: w.x - 4, y: ARENA.floorY - 7, w: 8, h: 7 })) die();
-  if (b.kind === 'sovereign' && b.orb) {                            // осколок: сверху — отбить, иначе смерть
+  if (b.kind === 'sovereign' && b.orb) {                            // осколок: сверху — отбить, сбоку — отброс
     const o = b.orb;
     if (o.mode !== 'back' && overlap(hit, { x: o.x - 6, y: o.y - 6, w: 12, h: 12 })) {
-      if (P.vy > 0 && P.y + P.h - P.vy <= o.y - 1) sovereignSpike(); else die();
+      // окно отбивки — верхняя половина осколка: падаешь сверху — отбил, а не погиб.
+      // Остывший осколок отбить можно, а вот повредить игроку он уже не может
+      if (P.vy > 0 && P.y + P.h - P.vy <= o.y + 3) sovereignSpike();
+      else if (!o.cool) orbGraze();
     }
   }
 }
@@ -967,7 +970,8 @@ function releaseOrb() {
   // осколок сперва отлетает в дальнюю от игрока сторону и падает к полу —
   // на голову он не сваливается, зато потом идёт через всю арену
   const away = P.x + P.w / 2 < ARENA.left + 112 ? 1 : -1;
-  b.orb = { x: c.x, y: c.y + 20, vx: away * 1.7, vy: 0.6, mode: 'drop', t: 0, life: 340 - bossRage() * 36 };
+  b.orb = { x: c.x, y: c.y + 20, vx: away * 1.7, vy: 0.6, mode: 'drop', t: 0, cool: 0,
+            life: 340 - bossRage() * 36 };
   snd('release', c.x);
   spawnParticles(c.x, c.y + 18, 16, ['#ffe9a8', '#ffb02e', '#fff4ef'], 2.6, 0.02, 26);
 }
@@ -975,6 +979,7 @@ function updateOrb() {
   const b = boss, o = b.orb;
   if (!o) return;
   o.t++;
+  if (o.cool) o.cool--;
   if (o.mode === 'drop') {                               // выход с привязи: дуга в сторону от игрока
     o.vy = Math.min(2, o.vy + 0.09);
     o.x = clamp(o.x + o.vx, ARENA.left + 18, LEVEL_W - 20);
@@ -988,10 +993,14 @@ function updateOrb() {
     // и упасть сверху, а вот стоять на месте нельзя.
     const spd = 1.05 + bossRage() * 0.11, turn = 0.06;
     const dx = P.x + P.w / 2 - o.x, ty = P.y + P.h - 8;
-    const wantVx = Math.abs(dx) < 3 ? 0 : Math.sign(dx) * spd;
-    const wantVy = clamp((ty - o.y) * 0.06, -0.7, 1.6);
+    // пока игрок падает сверху, осколок не подныривает под окно отбивки, а ждёт удара;
+    // отброшенный осколок не гонится, пока не остынет
+    const dive = P.vy > 0 && P.y + P.h <= o.y + 2 && Math.abs(dx) < 22;
+    const wantVx = o.cool || Math.abs(dx) < 3 ? 0 : Math.sign(dx) * spd;
+    const wantVy = dive || o.cool ? 0 : clamp((ty - o.y) * 0.06, -0.7, 1.6);
     o.vx += (wantVx - o.vx) * turn;
     o.vy += (wantVy - o.vy) * turn;
+    if (dive && o.vy < 0) o.vy = 0;                      // окно отбивки не едет вверх
     o.x = clamp(o.x + o.vx, ARENA.left + 18, LEVEL_W - 20);
     o.y = clamp(o.y + o.vy, 12, ARENA.floorY - 6);
     if (o.t % 6 === 0) spawnParticles(o.x, o.y, 1, ['#ffb02e', '#ffe9a8'], 0.7, -0.02, 14);
@@ -1017,6 +1026,14 @@ function sovereignSpike() {                              // игрок сбил 
   snd(o.lock ? 'spike' : 'clank', o.x);
   spawnParticles(o.x, o.y, o.lock ? 20 : 10,
     o.lock ? ['#fff4ef', '#ffe9a8', '#ffb02e'] : ['#c6bac5', '#877a90'], 3, 0.04, 24);
+}
+function orbGraze() {                                    // задел осколок сбоку: отброс, а не смерть
+  const o = boss.orb, dir = P.x + P.w / 2 < o.x ? -1 : 1;
+  moveX(dir * 8);                                        // вытолкнуть из осколка, но не сквозь стену
+  P.vx = dir * PHYS.maxSpeed; P.vy = -3.2; P.jumping = false; shake = 4;
+  o.cool = 70; o.vx = -dir * 1.4; o.vy = -0.6;           // осколок гаснет и отлетает — вплотную не липнет
+  snd('graze', o.x);
+  spawnParticles(o.x, o.y, 12, ['#dcbcff', '#7a3cff', '#fff4ef'], 2.2, 0.04, 20);
 }
 function orbBurst() {                                    // осколок лопается: фонтан искр вокруг себя
   const b = boss, o = b.orb;
@@ -1423,11 +1440,14 @@ function drawTetherOrb() {
     ctx.fillRect(Math.round(c.x + dx / len * i), Math.round(c.y + dy / len * i), 1, 1);
   }
   const hot = o.mode === 'back';
-  ctx.fillStyle = '#2e1358';                               // тёмная оправа — осколок виден и внутри столба
+  // остывший осколок (после отброса) гаснет до пепельного, а за 20 кадров до
+  // возвращения в строй начинает мигать — видно, когда он снова кусается
+  const cold = o.cool > 0 && (o.cool > 20 || frame % 6 < 3);
+  ctx.fillStyle = cold ? '#3a3040' : '#2e1358';            // тёмная оправа — осколок виден и внутри столба
   ctx.fillRect(ox - 7, oy - 5, 14, 10); ctx.fillRect(ox - 5, oy - 7, 10, 14);
-  ctx.fillStyle = hot ? '#ffe9a8' : '#a8670c'; ctx.fillRect(ox - 5, oy - 5, 10, 10);
-  ctx.fillStyle = hot ? '#fff4ef' : '#ffb02e'; ctx.fillRect(ox - 4, oy - 4, 8, 8);
-  ctx.fillStyle = '#fff4ef'; ctx.fillRect(ox - 2, oy - 2, 4, 4);
+  ctx.fillStyle = hot ? '#ffe9a8' : cold ? '#6b5c74' : '#a8670c'; ctx.fillRect(ox - 5, oy - 5, 10, 10);
+  ctx.fillStyle = hot ? '#fff4ef' : cold ? '#877a90' : '#ffb02e'; ctx.fillRect(ox - 4, oy - 4, 8, 8);
+  ctx.fillStyle = cold ? '#c6bac5' : '#fff4ef'; ctx.fillRect(ox - 2, oy - 2, 4, 4);
   ctx.fillStyle = hot ? '#ffb02e' : '#fff4ef';             // вращающиеся жала
   for (let i = 0; i < 4; i++) {
     const a = o.t * 0.15 + i * Math.PI / 2;
@@ -1551,7 +1571,7 @@ function drawHud() {
 window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
   boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y),
           orb: boss.orb && { x: Math.round(boss.orb.x), y: Math.round(boss.orb.y), mode: boss.orb.mode,
-                             life: boss.orb.life, inColumn: sovInColumn(boss.orb.x) } },
+                             life: boss.orb.life, cool: boss.orb.cool, inColumn: sovInColumn(boss.orb.x) } },
   shots: shots.map(s => [Math.round(s.x), Math.round(s.y)]), waves: waves.map(w => Math.round(w.x)),
   cells: ents.cells.filter(c => c.taken).length, drones: ents.drones.filter(d => d.alive).length,
   crawlers: ents.crawlers.filter(c => c.alive).length, turrets: ents.turrets.filter(t => t.alive).length,

@@ -287,6 +287,10 @@ const DEFS = {
     noise({ t0: t, kind: 'metal', filter: 'bandpass', f: 1400, f2: 420, q: 3, dur: 0.16, vol: 0.13 * o.v, pan: o.pan });
     blip({ t0: t, wave: 'p50', f: 340, f2: 180, dur: 0.12, vol: 0.09 * o.v, pan: o.pan });
   },
+  graze: (t, o) => {                                 // задел осколок сбоку — отброс, а не смерть
+    noise({ t0: t, kind: 'lfsr', filter: 'bandpass', f: 2200, f2: 700, q: 2.6, dur: 0.12, vol: 0.1 * o.v, pan: o.pan });
+    blip({ t0: t, wave: 'p12', f: 620, f2: 260, dur: 0.16, vol: 0.1 * o.v, pan: o.pan });
+  },
   bossOpen: (t, o) => {                              // броня раскрылась — «бей сюда»
     ['c5', 'g5', 'c6'].forEach((n, i) => blip({ t0: t + i * 0.07, wave: 'p25', f: nf(n), dur: 0.22, vol: 0.13 * o.v, echo: true }));
     noise({ t0: t, kind: 'metal', filter: 'bandpass', f: 1200, f2: 3000, q: 2, dur: 0.25, vol: 0.1 * o.v });
