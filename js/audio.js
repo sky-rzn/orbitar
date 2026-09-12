@@ -272,9 +272,20 @@ const DEFS = {
     fm({ t0: t, f: 90, f2: 32, ratio: 1.01, index: 9, idxDecay: 0.4, dur: 0.6, vol: 0.3 * o.v, wave: 'sine' });
     blip({ t0: t, wave: 'p50', f: 260, f2: 60, dur: 0.3, vol: 0.12 * o.v });
   },
-  blink: (t, o) => {
-    blip({ t0: t, wave: 'p12', f: 1800, f2: 200, dur: 0.13, vol: 0.12 * o.v, echo: true });
-    blip({ t0: t + 0.1, wave: 'p12', f: 260, f2: 1900, dur: 0.13, vol: 0.12 * o.v, pan: o.pan, echo: true });
+  // ---- корона-разлом: осколок сходит с привязи, отбит, звякнул мимо ----
+  release: (t, o) => {                               // осколок отстегнулся от короны
+    blip({ t0: t, wave: 'p12', f: 1700, f2: 520, dur: 0.22, vol: 0.11 * o.v, pan: o.pan, echo: true });
+    fm({ t0: t + 0.04, f: 420, f2: 210, ratio: 3.01, index: 4, dur: 0.3, vol: 0.1 * o.v, wave: 'sine', pan: o.pan });
+  },
+  spike: (t, o) => {                                 // отбил в столбе — осколок ушёл обратно в корону
+    ['e5', 'b5', 'e6'].forEach((n, i) =>
+      blip({ t0: t + i * 0.035, wave: 'p25', f: nf(n), dur: 0.3, vol: 0.16 * o.v, pan: o.pan, echo: true }));
+    fm({ t0: t, f: 900, f2: 2600, gl: 0.6, ratio: 2.01, index: 6, dur: 0.26, vol: 0.15 * o.v, wave: 'square', pan: o.pan });
+    noise({ t0: t, kind: 'metal', filter: 'bandpass', f: 2600, f2: 5200, q: 2.2, dur: 0.18, vol: 0.1 * o.v, pan: o.pan });
+  },
+  clank: (t, o) => {                                 // отбил мимо столба — глухой удар
+    noise({ t0: t, kind: 'metal', filter: 'bandpass', f: 1400, f2: 420, q: 3, dur: 0.16, vol: 0.13 * o.v, pan: o.pan });
+    blip({ t0: t, wave: 'p50', f: 340, f2: 180, dur: 0.12, vol: 0.09 * o.v, pan: o.pan });
   },
   bossOpen: (t, o) => {                              // броня раскрылась — «бей сюда»
     ['c5', 'g5', 'c6'].forEach((n, i) => blip({ t0: t + i * 0.07, wave: 'p25', f: nf(n), dur: 0.22, vol: 0.13 * o.v, echo: true }));
@@ -356,17 +367,21 @@ const LOOPS = {
     src.connect(f); src.start(); lfo.start();
     return { out: f, vol: 0.13, stop: t => { src.stop(t); lfo.stop(t); } };
   },
-  beam: () => {
-    const a = ctx.createOscillator(); a.type = 'sawtooth'; a.frequency.value = 58;
-    const b = ctx.createOscillator(); b.type = 'square'; b.frequency.value = 87;
-    const src = ctx.createBufferSource(); src.buffer = noiseBufs.metal; src.loop = true;
-    const ng = ctx.createGain(); ng.gain.value = 0.25; src.connect(ng);
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1300; f.Q.value = 4;
-    const lfo = ctx.createOscillator(), la = ctx.createGain();
-    lfo.frequency.value = 11; la.gain.value = 700; lfo.connect(la); la.connect(f.frequency);
-    a.connect(f); b.connect(f); ng.connect(f);
-    a.start(); b.start(); src.start(); lfo.start();
-    return { out: f, vol: 0.16, stop: t => { a.stop(t); b.stop(t); src.stop(t); lfo.stop(t); } };
+  // гул привязи: пока осколок короны на луче, он поёт — тихая квинта с биением
+  tether: () => {
+    const a = ctx.createOscillator(); a.type = 'triangle'; a.frequency.value = 233;
+    const b = ctx.createOscillator(); b.type = 'triangle'; b.frequency.value = 349.5;
+    const c = ctx.createOscillator(); c.type = 'sine'; c.frequency.value = 116.5;
+    const trem = ctx.createOscillator(), tg = ctx.createGain();   // биение громкости
+    trem.frequency.value = 5.5; tg.gain.value = 0.4;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 1.2;
+    const swp = ctx.createOscillator(), sg = ctx.createGain();    // медленный проход фильтра
+    swp.frequency.value = 0.35; sg.gain.value = 420; swp.connect(sg); sg.connect(f.frequency);
+    const vca = ctx.createGain(); vca.gain.value = 0.6;
+    trem.connect(tg); tg.connect(vca.gain);
+    a.connect(f); b.connect(f); c.connect(f); f.connect(vca);
+    a.start(); b.start(); c.start(); trem.start(); swp.start();
+    return { out: vca, vol: 0.12, stop: t => { a.stop(t); b.stop(t); c.stop(t); trem.stop(t); swp.stop(t); } };
   },
 };
 const active = {};

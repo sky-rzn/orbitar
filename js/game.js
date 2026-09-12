@@ -233,8 +233,10 @@ const BOSS_BOX = {
               shield: ['wake', 'hover', 'aim', 'slam'], weak: 'stun' },
   rootmind: { w: 40, h: 34, box: [3, 7, 34, 27], core: [6, 0, 28, 16],
               shield: ['wake', 'stalk', 'tell', 'dash', 'close'], weak: 'open' },
-  sovereign: { w: 36, h: 30, box: [4, 9, 28, 18], core: [10, 0, 16, 14],
-               shield: ['wake', 'volley', 'tell', 'beam', 'close'], weak: 'vent', ghost: 'blink' },
+  // Корона-разлом: топтать нечего — обод смертелен всегда, урон идёт только отбитым
+  // осколком. Рамка вписана в круглый обод, чтобы не убивать в пустых углах спрайта.
+  sovereign: { w: 44, h: 40, box: [7, 3, 30, 28], ring: true,
+               shield: ['wake', 'reign', 'throne', 'tether', 'curtain', 'recoil'] },
 };
 const bossDef = () => BOSS_BOX[boss.kind];
 const bossActive = () => boss.state !== 'idle' && boss.state !== 'dead';
@@ -247,7 +249,7 @@ const bossBox = () => bossRect('box');
 function resetBoss() {
   const kind = LV.boss, d = BOSS_BOX[kind];
   boss = { kind, state: 'idle', hp: LV.bossHp, t: 0, timer: 0, boltT: 0, flash: 0, vy: 0, dir: -1,
-           x: (LW - 10) * T + 8, y: ARENA.floorY - d.h };
+           orb: null, anchorX: 0, sweep: 0, x: (LW - 10) * T + 8, y: ARENA.floorY - d.h };
   shots = []; waves = [];
 }
 
@@ -716,18 +718,23 @@ function bossHazards(hit) {
   }
   for (const s of shots) if (overlap(hit, { x: s.x - s.r, y: s.y - s.r, w: s.r * 2, h: s.r * 2 })) die();
   for (const w of waves) if (overlap(hit, { x: w.x - 4, y: ARENA.floorY - 7, w: 8, h: 7 })) die();
-  if (b.kind === 'sovereign' && b.state === 'beam' && overlap(hit, sovereignBeam())) die();
+  if (b.kind === 'sovereign' && b.orb) {                            // осколок: сверху — отбить, иначе смерть
+    const o = b.orb;
+    if (o.mode !== 'back' && overlap(hit, { x: o.x - 6, y: o.y - 6, w: 12, h: 12 })) {
+      if (P.vy > 0 && P.y + P.h - P.vy <= o.y - 1) sovereignSpike(); else die();
+    }
+  }
 }
 function bossAwake() {                              // общий вход в бой: тревога + тема боссов
   boss.state = 'wake'; shake = 4;
   SFX.play('bossWake'); SFX.music('boss');
 }
-function hitBoss() {
+function hitBoss(bounce = true) {
   const b = boss;
   b.hp--; b.flash = 14; shake = 6; SFX.play('bossHit');
-  P.vy = -5; P.jumping = false;
+  if (bounce) { P.vy = -5; P.jumping = false; }        // корону бьёт её же осколок — игрока не подбрасывает
   spawnParticles(b.x + bossDef().w / 2, b.y + 4, 24, ['#4dff88', '#e6ecff', '#ffe14a'], 3, 0.1, 30);
-  if (b.hp <= 0) { b.state = 'dying'; b.timer = 120; shots = []; waves = []; }
+  if (b.hp <= 0) { b.state = 'dying'; b.timer = 120; shots = []; waves = []; b.orb = null; }
   else { b.state = 'recoil'; b.timer = 45; }
 }
 function bossDeath() {
@@ -913,27 +920,36 @@ function updateRootmind() {
 }
 
 // ---------- босс 3: SOVEREIGN (ASHEN CITADEL) ----------
-//  не ходит и не парит на месте: моргает по арене, бьёт веером копий,
-//  затем телеграфирует и включает вертикальный луч, ползущий за игроком.
-//  После луча корона перегревается и раскрывается — ядро можно топтать.
-function sovereignBeam() {
-  const b = boss;
-  return { x: b.x + 14, y: b.y + 28, w: 8, h: Math.max(0, ARENA.floorY - (b.y + 28)) };
+//  Корона-разлом не подпускает к себе: её обод смертелен всегда, топтать нечего.
+//  Бой идёт наоборот — урон наносит её же оружие. Корона встаёт на «трон»,
+//  спускает с привязи осколок-сферу и светит под собой резонансным столбом.
+//  Сферу надо сбить прыжком сверху, стоя в столбе: тогда она уходит обратно
+//  в корону и сбивает деление. Промах или просрочка — корона сыплет занавес
+//  осколков пустоты через всю арену.
+const SOV = {
+  top: 30,            // верхняя граница парения
+  throne: 46,         // высота «трона»: ниже она не опускается — допрыгнуть до обода нельзя
+  colW: 92,           // ширина резонансного столба — окно для отбивки
+  reign: 150,         // сколько корона царствует между тронами
+  curtain: 150,       // длительность занавеса осколков
+};
+const sovRing = () => ({ x: boss.x + 22, y: boss.y + 17 });      // центр кольца
+function sovColumn() {                                           // резонансный столб под троном
+  const c = sovRing();
+  return { x: c.x - SOV.colW / 2, y: c.y + 16, w: SOV.colW, h: Math.max(0, ARENA.floorY - (c.y + 16)) };
 }
-function fireLance() {
-  const b = boss, sx = b.x + 18, sy = b.y + 20;
-  const dx = P.x + P.w / 2 - sx, dy = P.y + P.h / 2 - sy, len = Math.hypot(dx, dy) || 1;
-  const spd = 1.9 + bossRage() * 0.14;
-  for (const a of [-0.24, 0, 0.24]) {
-    const ca = Math.cos(a), sa = Math.sin(a);
-    shots.push({ x: sx, y: sy, vx: (dx * ca - dy * sa) / len * spd, vy: (dx * sa + dy * ca) / len * spd,
-                 g: 0, r: 2, life: 280, cols: ['#8a1f3c', '#ff5a7a', '#fff4ef'] });
+const sovInColumn = x => { const c = sovColumn(); return x > c.x && x < c.x + c.w; };
+
+function fireRegalia() {                                 // редкие искры регалий по дуге
+  const c = sovRing(), dir = P.x + P.w / 2 < c.x ? -1 : 1;
+  for (const ang of [0.42, 0.86]) {
+    shots.push({ x: c.x, y: c.y + 14, vx: Math.cos(ang) * 1.5 * dir, vy: Math.sin(ang) * 1.5,
+                 g: 0.07, r: 2, life: 300, cols: ['#8a1f3c', '#ff5a7a', '#fff4ef'] });
   }
-  snd('lance', sx);
-  spawnParticles(sx, sy, 5, ['#ff5a7a', '#ffb02e'], 1.4, 0, 12);
+  snd('lance', c.x);
+  spawnParticles(c.x, c.y + 14, 5, ['#ffb02e', '#ff5a7a'], 1.4, 0.02, 12);
 }
-function dropShard() {                                   // осколок пустоты с потолка
-  const x = clamp(P.x + (Math.random() * 80 - 40), ARENA.left + 28, LEVEL_W - 40);
+function dropShard(x) {                                  // осколок пустоты с потолка
   shots.push({ x, y: 6, vx: 0, vy: 1.2, g: 0.1, r: 3, life: 300, cols: ['#2e1358', '#7a3cff', '#dcbcff'] });
   snd('drip', x);
   spawnParticles(x, 8, 4, ['#7a3cff', '#dcbcff'], 1, 0.05, 14);
@@ -944,17 +960,86 @@ function spawnSeeker(side) {
   snd('spawn', x);
   spawnParticles(x + 6, 102, 14, ['#c46bff', '#3cc8ff'], 2, 0.02, 26);
 }
-function sovereignBlink() {                              // перенос в новую точку арены
-  const b = boss;
-  let tx = b.x;
-  for (let i = 0; i < 12; i++) {
-    tx = ARENA.xMin + Math.random() * (ARENA.xMax - ARENA.xMin);
-    if (Math.abs(tx + 18 - (P.x + P.w / 2)) > 56) break;
-  }
-  b.x = tx; b.y = 62 + Math.random() * 24;
-  snd('blink', b.x);
-  spawnParticles(b.x + 18, b.y + 15, 20, ['#ffb02e', '#3cc8ff', '#fff4ef'], 3, 0.02, 28);
+
+// ---- осколок на привязи: единственный способ достать корону ----
+function releaseOrb() {
+  const b = boss, c = sovRing();
+  // осколок сперва отлетает в дальнюю от игрока сторону и падает к полу —
+  // на голову он не сваливается, зато потом идёт через всю арену
+  const away = P.x + P.w / 2 < ARENA.left + 112 ? 1 : -1;
+  b.orb = { x: c.x, y: c.y + 20, vx: away * 1.7, vy: 0.6, mode: 'drop', t: 0, life: 340 - bossRage() * 36 };
+  snd('release', c.x);
+  spawnParticles(c.x, c.y + 18, 16, ['#ffe9a8', '#ffb02e', '#fff4ef'], 2.6, 0.02, 26);
 }
+function updateOrb() {
+  const b = boss, o = b.orb;
+  if (!o) return;
+  o.t++;
+  if (o.mode === 'drop') {                               // выход с привязи: дуга в сторону от игрока
+    o.vy = Math.min(2, o.vy + 0.09);
+    o.x = clamp(o.x + o.vx, ARENA.left + 18, LEVEL_W - 20);
+    o.y += o.vy;
+    if (o.t % 4 === 0) spawnParticles(o.x, o.y, 1, ['#ffb02e', '#ffe9a8'], 0.7, 0, 14);
+    if (o.y >= ARENA.floorY - 26) { o.mode = 'hunt'; o.vy = 0; }
+    o.life--;
+  } else if (o.mode === 'hunt') {
+    // Осколок стелется на высоте колена и гонится по горизонтали: вниз падает
+    // резво, вверх тянется еле-еле — поэтому его всегда можно перепрыгнуть
+    // и упасть сверху, а вот стоять на месте нельзя.
+    const spd = 1.05 + bossRage() * 0.11, turn = 0.06;
+    const dx = P.x + P.w / 2 - o.x, ty = P.y + P.h - 8;
+    const wantVx = Math.abs(dx) < 3 ? 0 : Math.sign(dx) * spd;
+    const wantVy = clamp((ty - o.y) * 0.06, -0.7, 1.6);
+    o.vx += (wantVx - o.vx) * turn;
+    o.vy += (wantVy - o.vy) * turn;
+    o.x = clamp(o.x + o.vx, ARENA.left + 18, LEVEL_W - 20);
+    o.y = clamp(o.y + o.vy, 12, ARENA.floorY - 6);
+    if (o.t % 6 === 0) spawnParticles(o.x, o.y, 1, ['#ffb02e', '#ffe9a8'], 0.7, -0.02, 14);
+    if (--o.life <= 0) orbBurst();                       // просрочил — осколок лопается искрами
+  } else {                                               // отбит: идёт обратно в корону
+    const c = sovRing();
+    if (o.lock) o.vx += clamp((c.x - o.x) * 0.09, -1.1, 1.1);
+    o.vy = Math.max(-7.5, o.vy - 0.5);
+    o.x += o.vx; o.y += o.vy;
+    spawnParticles(o.x, o.y, 2, ['#fff4ef', '#ffe9a8'], 1.2, 0.02, 12);
+    if (o.lock && o.y <= c.y + 12 && Math.abs(o.x - c.x) < 20) { b.orb = null; hitBoss(false); }
+    else if (o.y < 2) {                                  // ушёл в потолок мимо короны
+      spawnParticles(o.x, 6, 18, ['#c6bac5', '#877a90', '#ffb02e'], 3, 0.08, 26);
+      snd('boom', o.x); b.orb = null; sovCurtain();
+    }
+  }
+}
+function sovereignSpike() {                              // игрок сбил осколок прыжком сверху
+  const b = boss, o = b.orb;
+  P.vy = -3.8; P.jumping = false; shake = 4;             // отдача короткая: подбросить под обод она не должна
+  o.mode = 'back'; o.t = 0; o.lock = sovInColumn(o.x);
+  o.vy = -6; o.vx = o.lock ? o.vx * 0.3 : (o.vx > 0 ? 1.4 : -1.4);
+  snd(o.lock ? 'spike' : 'clank', o.x);
+  spawnParticles(o.x, o.y, o.lock ? 20 : 10,
+    o.lock ? ['#fff4ef', '#ffe9a8', '#ffb02e'] : ['#c6bac5', '#877a90'], 3, 0.04, 24);
+}
+function orbBurst() {                                    // осколок лопается: фонтан искр вокруг себя
+  const b = boss, o = b.orb;
+  // искры бьют вверх и осыпаются рядом, а не стелются по арене вдогонку игроку:
+  // отойти от трещащего осколка — и фонтан не заденет
+  for (const a of [-2.6, -2.05, -1.57, -1.1, -0.55]) {
+    shots.push({ x: o.x + Math.cos(a) * 7, y: o.y + Math.sin(a) * 7,
+                 vx: Math.cos(a) * 2.2, vy: Math.sin(a) * 2.2, g: 0.2, r: 2, life: 110,
+                 cols: ['#2e1358', '#7a3cff', '#dcbcff'] });
+  }
+  snd('boom', o.x);
+  spawnParticles(o.x, o.y, 22, ['#7a3cff', '#dcbcff', '#ffb02e'], 3.4, 0.05, 28);
+  b.orb = null; sovCurtain();
+}
+function sovCurtain() {                                  // гнев: занавес осколков через всю арену
+  const b = boss;
+  b.state = 'curtain'; b.timer = SOV.curtain;
+  b.dir = P.x + P.w / 2 < ARENA.left + 112 ? 1 : -1;     // метла идёт со стороны игрока и гонит его через арену
+  b.sweep = b.dir > 0 ? ARENA.left + 20 : LEVEL_W - 24;
+  b.boltT = 0;
+  snd('tell', b.x); shake = 5;
+}
+
 function updateSovereign() {
   const b = boss, rage = bossRage();
   switch (b.state) {
@@ -962,60 +1047,68 @@ function updateSovereign() {
       if (state === 'play' && P.x >= ARENA.trigger) { bossAwake(); b.timer = 100; }
       break;
     case 'wake':
-      if (b.timer > 55) b.x += (frame % 2 ? 1 : -1) * 0.5;                     // дрожит на троне
-      else b.y = Math.max(72, b.y - 1.6);                                      // поднимается
-      if (b.timer % 12 === 0) spawnParticles(b.x + 18, b.y + 28, 5, ['#ffb02e', '#6b5c74'], 2, 0.1, 22);
-      if (--b.timer <= 0) { b.state = 'volley'; b.timer = 130; b.boltT = 45; }
+      if (b.timer > 58) b.x += (frame % 2 ? 1 : -1) * 0.5;                  // кольцо дрожит на постаменте
+      else b.y = Math.max(SOV.top, b.y - 1.6);                              // поднимается
+      if (b.timer % 10 === 0) spawnParticles(b.x + 22, b.y + 34, 5, ['#ffb02e', '#6b5c74'], 2, 0.08, 22);
+      if (--b.timer <= 0) { b.state = 'reign'; b.timer = SOV.reign; b.boltT = 60; }
       break;
-    case 'blink':
-      if (b.timer === 20) sovereignBlink();
-      if (--b.timer <= 0) { b.state = 'volley'; b.timer = 120 - rage * 10; b.boltT = 32; }
-      break;
-    case 'volley': {
-      b.y += Math.sin(b.t / 16) * 0.35;
-      const tx = clamp(P.x + P.w / 2 - 18, ARENA.xMin, ARENA.xMax);
-      b.x += clamp((tx - b.x) * 0.02, -0.5, 0.5);
-      if (--b.boltT <= 0) {
-        fireLance();
-        b.boltT = 64 - rage * 7;
-        if (rage >= 2) dropShard();
+    case 'reign': {                                                        // парит под потолком и давит искрами
+      const tx = clamp(P.x + P.w / 2 - 22, ARENA.xMin, ARENA.xMax);
+      b.x += clamp((tx - b.x) * 0.02, -0.75, 0.75);
+      b.y += clamp(SOV.top + Math.sin(b.t / 22) * 4 - b.y, -0.7, 0.7);
+      if (--b.boltT <= 0) { fireRegalia(); b.boltT = 78 - rage * 8; }
+      if (rage >= 3 && b.t % 110 === 0) dropShard(clamp(P.x + 4, ARENA.left + 28, LEVEL_W - 40));
+      if (--b.timer <= 0) {                                                // выбирает трон подальше от игрока
+        let tx2 = b.x;
+        for (let i = 0; i < 14; i++) {
+          tx2 = ARENA.xMin + Math.random() * (ARENA.xMax - ARENA.xMin);
+          if (Math.abs(tx2 + 22 - (P.x + P.w / 2)) > 72) break;
+        }
+        b.state = 'throne'; b.anchorX = tx2; b.timer = 54 - rage * 3;
+        snd('tell', b.x);
       }
-      if (--b.timer <= 0) { b.state = 'tell'; b.timer = 52 - rage * 4; }
       break;
     }
-    case 'tell':                                                              // телеграф луча
-      if (b.timer === 52 - rage * 4) snd('tell', b.x);
-      b.x += (frame % 2 ? 1 : -1) * 0.5;
-      if (--b.timer <= 0) { b.state = 'beam'; b.timer = 56 + rage * 6; }
-      break;
-    case 'beam': {                                                            // луч ползёт за игроком
-      const spd = 0.5 + rage * 0.16;
-      const tx = clamp(P.x + P.w / 2 - 18, ARENA.xMin, ARENA.xMax);
-      b.x += clamp(tx - b.x, -spd, spd);
-      if (frame % 3 === 0)
-        spawnParticles(b.x + 18, ARENA.floorY - 3, 2, ['#ffb02e', '#fff4ef'], 2, -0.05, 16);
-      if (--b.timer <= 0) { b.state = 'vent'; b.timer = 150 - rage * 16; }
+    case 'throne': {                                                       // встаёт на трон — телеграф
+      b.x += clamp(b.anchorX - b.x, -3.2, 3.2);
+      b.y += clamp(SOV.throne - b.y, -1.6, 1.6);
+      if (b.timer % 8 === 0) spawnParticles(b.x + 22, b.y + 30, 4, ['#ffe9a8', '#ffb02e'], 2, 0.03, 20);
+      // отсчёт телеграфа идёт только когда корона встала: столб не должен ехать
+      const set = Math.abs(b.anchorX - b.x) < 2 && Math.abs(SOV.throne - b.y) < 2;
+      if (set && --b.timer <= 0) { b.state = 'tether'; b.timer = 0; releaseOrb(); }
       break;
     }
-    case 'vent':                                                              // перегрев: ядро наружу
-      if (b.timer === 150 - rage * 16) snd('bossOpen', b.x);
-      b.y += clamp(140 - b.y, -1.8, 1.8);          // опускается, чтобы до ядра можно было допрыгнуть
-      if (b.t % 14 === 0) spawnParticles(b.x + 18, b.y + 26, 3, ['#ff7a3c', '#ffb02e'], 1.6, -0.04, 20);
-      if (--b.timer <= 0) { b.state = 'close'; b.timer = 36; }
+    case 'tether':                                                         // привязь: корона стоит, осколок охотится
+      if (!b.orb) { sovCurtain(); break; }                                 // страховка от зависания без осколка
+      b.y = SOV.throne + Math.sin(b.t / 18) * 1.5;
+      if (rage >= 2 && b.t % (104 - rage * 12) === 0)
+        dropShard(clamp(P.x + 4 + (Math.random() * 40 - 20), ARENA.left + 28, LEVEL_W - 40));
       break;
-    case 'close':
-      b.y -= 1.2;
-      if (--b.timer <= 0) { b.state = 'blink'; b.timer = 40; }
+    case 'curtain': {                                                      // занавес осколков метёт арену
+      b.y += clamp(SOV.top + 6 - b.y, -1.4, 1.4);
+      b.x += clamp(clamp(b.sweep - 22, ARENA.xMin, ARENA.xMax) - b.x, -2.6, 2.6);
+      if (--b.boltT <= 0) {
+        // метла всегда медленнее бега: с яростью занавес не разгоняется, а густеет
+        dropShard(clamp(b.sweep, ARENA.left + 24, LEVEL_W - 26));
+        b.sweep += b.dir * (20 - rage * 2);
+        b.boltT = 12;
+      }
+      if (--b.timer <= 0) { b.state = 'reign'; b.timer = SOV.reign - rage * 16; b.boltT = 50; }
       break;
-    case 'recoil':
-      b.x += (frame % 2 ? 1 : -1) * 0.6;
+    }
+    case 'recoil':                                                         // деление сбито: кольцо кренится и уходит вверх
+      b.x += (frame % 2 ? 1 : -1) * 0.7;
+      b.y = Math.max(SOV.top - 6, b.y - 0.9);
+      if (b.timer % 6 === 0) spawnParticles(b.x + 22, b.y + 17, 6, ['#ffb02e', '#fff4ef', '#7a3cff'], 2.6, 0.04, 24);
       if (--b.timer <= 0) {
-        b.state = 'blink'; b.timer = 40;
-        if (rage >= 2) { spawnSeeker(-1); spawnSeeker(1); }                    // раненый зовёт искателей
+        b.state = 'reign'; b.timer = SOV.reign - rage * 16; b.boltT = 46;
+        if (rage >= 3) { spawnSeeker(-1); spawnSeeker(1); }                // израненная корона зовёт искателей
       }
       break;
   }
+  updateOrb();
 }
+
 
 // ---------- главный такт ----------
 function update() {
@@ -1054,7 +1147,8 @@ function update() {
   }
   // непрерывные источники: поток вентилятора и луч SOVEREIGN
   SFX.loop('vent', state === 'play' && P.lift > 0);
-  SFX.loop('beam', state === 'play' && boss.state === 'beam', { pan: panOf(boss.x) });
+  const orb = boss.kind === 'sovereign' ? boss.orb : null;
+  SFX.loop('tether', state === 'play' && !!orb && orb.mode !== 'back', { pan: panOf(orb ? orb.x : 0) });
   if (pressed.KeyC) { const s = document.getElementById('scan'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
   // камера
   const target = bossActive() ? LEVEL_W - W : P.x + P.w / 2 - W / 2 + P.face * 24; // на арене камера заперта
@@ -1212,24 +1306,28 @@ function draw() {
     }
   }
 
-  // вертикальный луч SOVEREIGN и его телеграф
-  if (boss.kind === 'sovereign' && (boss.state === 'tell' || boss.state === 'beam')) {
-    const r = sovereignBeam();
-    if (boss.state === 'tell') {
-      if (frame % 6 < 3) {
-        ctx.fillStyle = '#ffe9a8';
-        for (let y = r.y; y < r.y + r.h; y += 7) ctx.fillRect(r.x + 3, y, 2, 4);
-      }
-      ctx.fillStyle = frame % 8 < 4 ? '#ffb02e' : '#a8670c';
-      ctx.fillRect(r.x - 5, ARENA.floorY - 3, 18, 3);
-    } else {
-      ctx.fillStyle = '#a8431a'; ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.fillStyle = '#ffb02e'; ctx.fillRect(r.x + 1, r.y, r.w - 2, r.h);
-      ctx.fillStyle = frame % 4 < 2 ? '#fff4ef' : '#ffe9a8'; ctx.fillRect(r.x + 3, r.y, 2, r.h);
-      ctx.fillStyle = '#ffe9a8';
-      const fw = 14 - (frame % 3) * 3;
-      ctx.fillRect(r.x + 4 - fw / 2, ARENA.floorY - 4, fw, 4);
+  // резонансный столб SOVEREIGN: в нём отбитый осколок уходит обратно в корону
+  if (boss.kind === 'sovereign' && boss.orb) {
+    const c = sovColumn();
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = '#ffb02e'; ctx.fillRect(c.x, c.y, c.w, c.h);
+    ctx.globalAlpha = 1;
+    for (let y = c.y; y < c.y + c.h; y += 2) {                 // дизер по кромкам столба
+      if ((y + frame) % 6 < 3) continue;
+      ctx.fillStyle = '#ffe9a8'; ctx.fillRect(c.x, y, 1, 1); ctx.fillRect(c.x + c.w - 1, y, 1, 1);
     }
+    for (let i = 0; i < 4; i++) {                              // шевроны бегут вверх — «сюда»
+      const y = c.y + c.h - 6 - ((frame * 1.4 + i * 26) % (c.h - 8));
+      ctx.fillStyle = i % 2 ? '#ffb02e' : '#ffe9a8';
+      for (let k = 0; k < 5; k++) {                            // «галочки» остриём вверх
+        ctx.fillRect(c.x + c.w / 2 - 4 + k, y + 4 - k, 1, 1); ctx.fillRect(c.x + c.w / 2 + 4 - k, y + 4 - k, 1, 1);
+      }
+    }
+    const fy = ARENA.floorY - 4;                               // площадка на полу
+    ctx.fillStyle = '#a8670c'; ctx.fillRect(c.x, fy, c.w, 4);
+    ctx.fillStyle = frame % 8 < 4 ? '#ffb02e' : '#ffe9a8'; ctx.fillRect(c.x, fy, c.w, 2);
+    ctx.fillStyle = '#fff4ef';
+    for (const bx of [c.x, c.x + c.w - 6]) ctx.fillRect(bx, fy - 3, 6, 2);
   }
 
   // энергобарьер арены
@@ -1286,8 +1384,9 @@ function drawBoss() {
   const bx = Math.round(b.x), by = Math.round(b.y);
   // шаг сквозь пространство: растворился — проявился на новом месте
   if (b.state === d.ghost) ctx.globalAlpha = b.timer > 20 ? (b.timer - 20) / 20 : 1 - b.timer / 20;
-  // щит (пунктир) — когда босс неуязвим
-  if (d.shield.includes(b.state)) {
+  // щит (пунктир) — когда босс неуязвим; у короны-разлома вместо рамки свои осколки
+  if (d.ring) drawCrownShards();
+  else if (d.shield.includes(b.state)) {
     ctx.fillStyle = frame % 8 < 4 ? LV.accent : LV.accent2;
     const x0 = bx - 3, y0 = by - 3, w = d.w + 6, h = d.h + 6, o = frame % 3;
     for (let i = o; i < w; i += 3) { ctx.fillRect(x0 + i, y0, 1, 1); ctx.fillRect(x0 + i, y0 + h, 1, 1); }
@@ -1295,6 +1394,52 @@ function drawBoss() {
   }
   ctx.drawImage(img, bx, by);
   ctx.globalAlpha = 1;
+  if (d.ring) drawTetherOrb();
+}
+// осколки короны по кругу: сколько делений осталось — столько и осколков,
+// на привязи один из них снят и висит на луче
+function drawCrownShards() {
+  const b = boss, c = sovRing();
+  const n = b.hp - (b.orb ? 1 : 0);
+  for (let i = 0; i < n; i++) {
+    const a = b.t * 0.018 + i * Math.PI * 2 / Math.max(1, n);
+    const x = Math.round(c.x + Math.cos(a) * 30), y = Math.round(c.y + Math.sin(a) * 30);
+    ctx.fillStyle = '#a8670c'; ctx.fillRect(x - 2, y - 2, 5, 5);           // огранка
+    ctx.fillStyle = frame % 10 < 5 ? '#ffb02e' : '#ffe9a8';
+    ctx.fillRect(x - 1, y - 3, 2, 7); ctx.fillRect(x - 3, y - 1, 7, 2);    // ромб
+    ctx.fillStyle = '#fff4ef'; ctx.fillRect(x - 1, y - 1, 2, 2);
+  }
+}
+// привязь и сам осколок: золотой на охоте, добела раскалённый на возврате
+function drawTetherOrb() {
+  const b = boss, o = b.orb;
+  if (!o) return;
+  const c = sovRing(), ox = Math.round(o.x), oy = Math.round(o.y);
+  const dx = ox - c.x, dy = oy - c.y, len = Math.max(1, Math.hypot(dx, dy));
+  for (let i = 6; i < len; i += 4) {                       // пунктирная привязь
+    if (o.mode !== 'back' && (i / 4 + Math.floor(frame / 2)) % 3 === 0) continue;
+    // чередуем белый с тёмным фиолетом — привязь видно и на золоте столба, и на фоне
+    ctx.fillStyle = o.mode === 'back' ? '#fff4ef' : (i / 4 + Math.floor(frame / 3)) % 2 ? '#fff4ef' : '#3a1a66';
+    ctx.fillRect(Math.round(c.x + dx / len * i), Math.round(c.y + dy / len * i), 1, 1);
+  }
+  const hot = o.mode === 'back';
+  ctx.fillStyle = '#2e1358';                               // тёмная оправа — осколок виден и внутри столба
+  ctx.fillRect(ox - 7, oy - 5, 14, 10); ctx.fillRect(ox - 5, oy - 7, 10, 14);
+  ctx.fillStyle = hot ? '#ffe9a8' : '#a8670c'; ctx.fillRect(ox - 5, oy - 5, 10, 10);
+  ctx.fillStyle = hot ? '#fff4ef' : '#ffb02e'; ctx.fillRect(ox - 4, oy - 4, 8, 8);
+  ctx.fillStyle = '#fff4ef'; ctx.fillRect(ox - 2, oy - 2, 4, 4);
+  ctx.fillStyle = hot ? '#ffb02e' : '#fff4ef';             // вращающиеся жала
+  for (let i = 0; i < 4; i++) {
+    const a = o.t * 0.15 + i * Math.PI / 2;
+    ctx.fillRect(Math.round(ox + Math.cos(a) * 7) - 1, Math.round(oy + Math.sin(a) * 7) - 1, 2, 2);
+  }
+  if (o.mode !== 'back' && o.life < 70 && frame % 6 < 3) {  // вот-вот лопнет
+    ctx.fillStyle = '#dcbcff';
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + o.t * 0.2;
+      ctx.fillRect(Math.round(ox + Math.cos(a) * 10) - 1, Math.round(oy + Math.sin(a) * 10) - 1, 2, 2);
+    }
+  }
 }
 function wardenFrame() {
   const b = boss, S = A.boss;
@@ -1325,18 +1470,18 @@ function rootmindFrame() {
   return (b.flash > 0 && b.flash % 4 < 2) ? S.flash : img;
 }
 function sovereignFrame() {
-  const b = boss, S = A.boss3;
-  let img;
+  const b = boss, S = A.boss3, sp = Math.floor(b.t / 6) % 4;
+  if (b.flash > 0 && b.flash % 4 < 2) return S.flash;
   switch (b.state) {
-    case 'idle': img = S.dormant[0]; break;
-    case 'wake': img = S.dormant[Math.floor(b.t / 6) % 2]; break;
-    case 'tell': img = S.aim[Math.floor(b.t / 3) % 2]; break;
-    case 'beam': img = S.cast[Math.floor(b.t / 3) % 2]; break;
-    case 'vent': case 'recoil': img = S.open[Math.floor(b.t / 10) % 2]; break;
-    case 'dying': img = S.open[Math.floor(b.t / 4) % 2]; break;
-    default: img = S.hover[Math.floor(b.t / 8) % 2];   // blink / volley / close
+    case 'idle': return S.dim[0];
+    case 'wake': return (b.t % 14 < 7 ? S.dim : S.live)[sp];
+    case 'throne': return S.tell[sp];
+    case 'tether': return S.hot[sp];
+    case 'curtain': return (Math.floor(b.t / 4) % 2 ? S.hot : S.tell)[sp];
+    case 'recoil': return (b.flash > 0 || b.t % 8 < 4 ? S.dim : S.tell)[sp];
+    case 'dying': return S.dim[sp];
+    default: return S.live[sp];                 // reign
   }
-  return (b.flash > 0 && b.flash % 4 < 2) ? S.flash : img;
 }
 
 // ---------- HUD ----------
@@ -1404,7 +1549,9 @@ function drawHud() {
 
 // отладочный доступ к состоянию (для автотестов)
 window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
-  boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y) },
+  boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y),
+          orb: boss.orb && { x: Math.round(boss.orb.x), y: Math.round(boss.orb.y), mode: boss.orb.mode,
+                             life: boss.orb.life, inColumn: sovInColumn(boss.orb.x) } },
   shots: shots.map(s => [Math.round(s.x), Math.round(s.y)]), waves: waves.map(w => Math.round(w.x)),
   cells: ents.cells.filter(c => c.taken).length, drones: ents.drones.filter(d => d.alive).length,
   crawlers: ents.crawlers.filter(c => c.alive).length, turrets: ents.turrets.filter(t => t.alive).length,
