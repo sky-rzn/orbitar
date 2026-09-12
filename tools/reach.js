@@ -45,7 +45,7 @@ function runPlan(n, p, seen, add) {
     const keys = [];
     if (dir) keys.push(dir);
     if (p.down && f < 3) keys.push('ArrowDown');
-    if (!p.down && f >= p.r && f < p.r + p.h) keys.push('KeyZ');
+    if (!p.down && f >= p.r && f < p.r + p.h) keys.push('Space');
     g.setKeys(keys);
     g.step(1);
     const st = g.dbg();

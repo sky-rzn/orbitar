@@ -59,11 +59,11 @@ window.addEventListener('keydown', e => {
 const inp = {
   left: () => keys.ArrowLeft || keys.KeyA,
   right: () => keys.ArrowRight || keys.KeyD,
-  jump: () => keys.KeyZ || keys.Space || keys.ArrowUp || keys.KeyW,
-  jumpPressed: () => pressed.KeyZ || pressed.Space || pressed.ArrowUp || pressed.KeyW,
+  jump: () => keys.ArrowUp || keys.KeyW || keys.Space,
+  jumpPressed: () => pressed.ArrowUp || pressed.KeyW || pressed.Space,
   downPressed: () => pressed.ArrowDown || pressed.KeyS,
   upPressed: () => pressed.ArrowUp || pressed.KeyW,
-  selectPressed: () => pressed.Space || pressed.KeyZ || pressed.Enter,
+  selectPressed: () => pressed.Space || pressed.Enter,
 };
 
 // ---------- битмап-шрифт 3x5 ----------
