@@ -820,7 +820,7 @@ function updateLeapers() {
           }
         }
       }
-      if (l.y > H + 24) { l.x = l.hx; l.y = l.hy; l.vx = l.vy = 0; l.st = 0; l.t = 60; }
+      if (l.y > LEVEL_H + 24) { l.x = l.hx; l.y = l.hy; l.vx = l.vy = 0; l.st = 0; l.t = 60; }
       continue;
     }
     if (!onScreen(l.x)) { l.t = Math.max(l.t, 24); continue; }
@@ -911,7 +911,7 @@ const turretCharging = t => t.alive && t.t >= 90;
 
 function updateShots() {
   for (const s of shots) { s.x += s.vx; s.y += s.vy; s.vy += s.g; s.life--; }
-  shots = shots.filter(s => s.life > 0 && s.y < H + 8 && s.x > -8 && s.x < LEVEL_W + 8 &&
+  shots = shots.filter(s => s.life > 0 && s.y < LEVEL_H + 8 && s.x > -8 && s.x < LEVEL_W + 8 &&
                             !isSolid(Math.floor(s.x / T), Math.floor(s.y / T)));
 }
 function updateParticles() {
