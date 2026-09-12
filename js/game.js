@@ -1840,8 +1840,8 @@ function update() {
   }
   if (cheatMsg > 0) cheatMsg--;
   if (toastT > 0) toastT--;
-  if (pressed.KeyM) toast(SFX.toggleSound() ? 'SOUND ON' : 'SOUND OFF');
-  if (pressed.KeyB) toast(SFX.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF');
+  if (pressed.KeyV) toast(SFX.toggleSound() ? 'SOUND ON' : 'SOUND OFF');
+  if (pressed.KeyM) toast(SFX.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF');
   // фазовые плиты: тик на смене такта, если они на экране
   if (ents.phases.length) {
     const ps = phaseStage(0) * 3 + phaseStage(1);
@@ -1857,7 +1857,7 @@ function update() {
   SFX.loop('jet', state === 'play' && ((boss.kind === 'hoarfrost' && boss.state === 'erupt') ||
            (boss.kind === 'pulsar' && boss.state === 'beam')),
            { pan: panOf(boss.kind === 'pulsar' ? boss.x + 20 : boss.jetX) });
-  if (pressed.KeyC) { const s = document.getElementById('scan'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
+  if (pressed.KeyL) { const s = document.getElementById('scan'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
   // камера: по горизонтали смотрит вперёд по бегу, по вертикали — вслед за падением
   const tx = bossActive() && !ARENA.vert ? LEVEL_W - W : P.x + P.w / 2 - W / 2 + (VERT ? 0 : P.face * 24);
   cam.x += (tx - cam.x) * 0.08;
