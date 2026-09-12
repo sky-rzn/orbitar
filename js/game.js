@@ -236,7 +236,9 @@ function loadLevel(idx) {
       case 'Y': {                                  // сталактит: считаем, докуда ему падать
         let yy = y + 1;
         while (yy < LH && !isStatic(x, yy)) yy++;
-        ents.icicles.push({ x: px, y: py, y0: py, hitY: yy * T, vy: 0, st: 0, t: 0 }); break;
+        // сосульки в шахте босса срывает не игрок, а столб стужи — и падают они на колосса
+        ents.icicles.push({ x: px, y: py, y0: py, hitY: yy * T, vy: 0, st: 0, t: 0,
+                            arena: !!(LV.arena && y >= LV.arena.top) }); break;
       }
       case 'G': case 'g': {                        // раструб пурги: полоса до первой стены
         const dir = c === 'G' ? 1 : -1;
@@ -522,11 +524,20 @@ function updateGusts() {
   }
 }
 
-// Сталактит срывается, когда под ним проходят: трещит, падает, разбивается, отрастает
+// Сталактит срывается, когда под ним проходят: трещит, падает, разбивается, отрастает.
+// Сосульки в шахте босса — исключение: их срывает столб стужи (см. hoarCrack), и летят они
+// не в пустоту, а на голову колоссу; до пола такая не долетает — тонет в криовзвеси.
+const icicleSpike = i => ({ x: i.x + 5, y: i.y + 1, w: 6, h: 14 });
+function shatterIcicle(i, atY) {
+  i.st = 3; i.t = ICICLE.back; i.vy = 0;
+  if (!onScreen(i.x, i.y)) return;
+  snd('shatter', i.x);
+  spawnParticles(i.x + 8, atY - 5, 14, ['#f0ffff', '#a5d8e2', ...LV.fx.lift], 2.6, 0.16, 28);
+}
 function updateIcicles() {
   for (const i of ents.icicles) {
     if (i.st === 0) {
-      if (state === 'play' && P.y + P.h > i.y + T && onScreen(i.x, i.y) &&
+      if (!i.arena && state === 'play' && P.y + P.h > i.y + T && onScreen(i.x, i.y) &&
           P.x + P.w > i.x - ICICLE.reach && P.x < i.x + T + ICICLE.reach) {
         i.st = 1; i.t = ICICLE.warn; snd('crack', i.x);
       }
@@ -535,13 +546,12 @@ function updateIcicles() {
     } else if (i.st === 2) {
       i.vy = Math.min(ICICLE.maxFall, i.vy + ICICLE.grav);
       i.y += i.vy;
-      if (i.y + T >= i.hitY) {
-        i.st = 3; i.t = ICICLE.back;
-        if (onScreen(i.x, i.y)) {
-          snd('shatter', i.x);
-          spawnParticles(i.x + 8, i.hitY - 5, 14, ['#f0ffff', '#a5d8e2', ...LV.fx.lift], 2.6, 0.16, 28);
-        }
+      // попадание в броню колосса — такое же деление, как прыжок на раскрытую корону
+      if (i.arena && bossActive() && boss.state !== 'dying' && overlap(icicleSpike(i), bossBox())) {
+        shatterIcicle(i, i.y + T); hitBoss(false); continue;
       }
+      const land = i.arena ? Math.min(i.hitY, Math.round(boss.flood)) : i.hitY;
+      if (i.y + T >= land) shatterIcicle(i, land);
     } else if (--i.t <= 0) { i.st = 0; i.y = i.y0; i.vy = 0; }
   }
 }
@@ -726,7 +736,7 @@ function updatePlayer() {
   for (const m of ents.melt) if (overlap(hit, { x: m.x, y: m.y + (m.top ? 5 : 0), w: T, h: m.top ? T - 5 : T })) die();
   for (const r of ents.rifts) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 4 : 0), w: T, h: r.top ? T - 4 : T })) die();
   for (const r of ents.cryos) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 5 : 0), w: T, h: r.top ? T - 5 : T })) die();
-  for (const i of ents.icicles) if (i.st === 2 && overlap(hit, { x: i.x + 5, y: i.y + 1, w: 6, h: 14 })) die();
+  for (const i of ents.icicles) if (i.st === 2 && overlap(hit, icicleSpike(i))) die();
   for (const h of ents.howlers) if (overlap(hit, { x: h.x + 2, y: h.y + 2, w: 12, h: 12 })) die();
   for (const p of ents.presses) if (overlap(hit, { x: p.x + 1, y: p.y, w: 14, h: 16 })) die();
   for (const q of ents.saws) if (overlap(hit, { x: q.x + 2, y: q.y + 2, w: 12, h: 12 })) die();
@@ -1387,6 +1397,9 @@ function updateSovereign() {
 //  намечается в начале наводки и дальше не следует за игроком: разметка — честное
 //  предупреждение, у которого есть ответ, а не приговор. После столба
 //  он выдыхается и раскрывает корону: вот тогда на макушку и надо спрыгнуть.
+//  Второй способ пробить деление — его собственный столб: он выламывает сосульки
+//  из-под верхней платформы, и они падают колоссу на броню. Колонну выбирает игрок,
+//  так что это плата за риск постоять над колоссом в той самой колонне.
 //  Каждое деление сбрасывает взвесь на три тайла — воздух выигрывается попаданиями.
 const HOAR = { swim: 200, aim: 54, erupt: 66, spent: 155, jetW: 30 };
 const hoarTop = () => boss.flood - BOSS_BOX.hoarfrost.h + 14;    // по пояс во взвеси
@@ -1405,6 +1418,18 @@ function fireHail() {                                 // веер ледяных
   }
   snd('hail', sx);
   spawnParticles(sx, sy, 6, ['#7fe9f5', '#eaffff'], 1.6, 0, 14);
+}
+// Столб стужи бьёт в свод арены и выламывает из-под верхней платформы сосульки:
+// колонна выбрана игроком, так что это его ответный ход — заманить столб туда,
+// где над колоссом висит лёд, и успеть уйти вбок из-под обеих напастей.
+function hoarCrack() {
+  const j = hoarJet();
+  let cracked = 0;
+  for (const i of ents.icicles) {
+    if (!i.arena || i.st !== 0 || i.x + T <= j.x || i.x >= j.x + j.w) continue;
+    i.st = 1; i.t = ICICLE.warn; cracked++;
+  }
+  if (cracked) snd('crack', j.x + j.w / 2);
 }
 function hoarShardFall() {                            // сосульки с потолка арены, вразнобой
   const x = ARENA.left + 28 + Math.random() * (LEVEL_W - 56 - ARENA.left);
@@ -1441,7 +1466,10 @@ function updateHoarfrost() {
       b.y = hoarTop() + (frame % 2);
       if (b.timer % 6 === 0)
         spawnParticles(b.jetX, b.flood - 4, 4, ['#7fe9f5', '#eaffff'], 2, -0.06, 20);
-      if (--b.timer <= 0) { b.state = 'erupt'; b.timer = HOAR.erupt + rage * 6; snd('jet', b.jetX); shake = 6; }
+      if (--b.timer <= 0) {
+        b.state = 'erupt'; b.timer = HOAR.erupt + rage * 6; snd('jet', b.jetX); shake = 6;
+        hoarCrack();                                   // столб вырывает лёд из свода над собой
+      }
       break;
     case 'erupt':                                      // столб стужи до самого потолка
       b.y = hoarTop();
