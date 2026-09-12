@@ -1359,13 +1359,17 @@ function updateSovereign() {
 //  и взвесь всё время прибывает: нижние карнизы уходят под лёд, игрок лезет выше,
 //  а колосс поднимается вместе с ней и остаётся в досягаемости.
 //  Топтать броню нельзя. Он наводится на колонну, в которой стоит игрок, и бьёт
-//  вверх столбом стужи до самого потолка — уйти можно только вбок. После столба
+//  вверх столбом стужи до самого потолка — уйти можно только вбок. Колонна
+//  намечается в начале наводки и дальше не следует за игроком: разметка — честное
+//  предупреждение, у которого есть ответ, а не приговор. После столба
 //  он выдыхается и раскрывает корону: вот тогда на макушку и надо спрыгнуть.
 //  Каждое деление сбрасывает взвесь на три тайла — воздух выигрывается попаданиями.
 const HOAR = { swim: 200, aim: 54, erupt: 66, spent: 155, jetW: 30 };
 const hoarTop = () => boss.flood - BOSS_BOX.hoarfrost.h + 14;    // по пояс во взвеси
 const hoarJet = () => ({ x: boss.jetX - HOAR.jetW / 2, y: ARENA.top,
                          w: HOAR.jetW, h: Math.max(0, boss.flood - ARENA.top) });
+// колонна выбирается один раз, в начале наводки, и дальше не ездит за игроком
+const hoarColumn = () => clamp(P.x + P.w / 2, ARENA.left + 26, LEVEL_W - 26);
 
 function fireHail() {                                 // веер ледяных осколков в игрока
   const b = boss, sx = b.x + 24, sy = b.y + 12;
@@ -1404,12 +1408,13 @@ function updateHoarfrost() {
       b.y = hoarTop() + Math.sin(b.t / 20) * 2;
       if (--b.boltT <= 0) { fireHail(); b.boltT = 92 - rage * 10; }
       if (rage >= 2 && b.t % (150 - rage * 14) === 0) hoarShardFall();
-      if (--b.timer <= 0) { b.state = 'aim'; b.timer = HOAR.aim - rage * 3; snd('tell', b.x); }
+      if (--b.timer <= 0) {
+        b.state = 'aim'; b.timer = HOAR.aim - rage * 3; b.jetX = hoarColumn(); snd('tell', b.x);
+      }
       break;
     }
-    case 'aim':                                        // наводится на колонну, где стоит игрок
+    case 'aim':                                        // колонна уже выбрана: только разметка и рёв
       b.y = hoarTop() + (frame % 2);
-      b.jetX = clamp(P.x + P.w / 2, ARENA.left + 26, LEVEL_W - 26);
       if (b.timer % 6 === 0)
         spawnParticles(b.jetX, b.flood - 4, 4, ['#7fe9f5', '#eaffff'], 2, -0.06, 20);
       if (--b.timer <= 0) { b.state = 'erupt'; b.timer = HOAR.erupt + rage * 6; snd('jet', b.jetX); shake = 6; }
