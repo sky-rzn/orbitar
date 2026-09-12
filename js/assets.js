@@ -77,6 +77,36 @@ const PAL = {
   b3: '#8a1f3c',
   V3: '#3a2450', // фон-фиолет
   v3: '#5c3b78',
+  // ---- сдвиг палитры (GLACIAL DESCENT — ледяной спуск) ----
+  //  тот же язык «неон по тёмному металлу», но металл — стылая сталь в инее,
+  //  неон — роза, подсветка антиграва — мята, кристаллы — ледяные друзы,
+  //  опасность — криовзвесь вместо ям, расплава и разлома.
+  K4: '#050d16', // почти чёрный (ледяной)
+  D4: '#0e1e2e', // сумрак
+  d4: '#193245', // тёмный металл
+  M4: '#2f5e77', // металл (стылая сталь)
+  m4: '#5a97ad', // светлый металл
+  W4: '#a5d8e2', // блик металла (иней)
+  w4: '#f0ffff', // белый
+  C4: '#ff6b9d', // неон-роза
+  c4: '#8f2b54', // тёмная роза
+  P4: '#6bffd6', // мята
+  p4: '#12856f', // тёмная мята
+  Y4: '#ffd76b', // тёплое золото (телеграф)
+  O4: '#ff9a5c', // оранжевый
+  o4: '#a8502a',
+  G4: '#9bf0ff', // ледяные друзы
+  g4: '#2a7f9e',
+  B4: '#6b8cff', // энергия портала
+  b4: '#2a3a8a',
+  V4: '#14293d', // фон-синь
+  v4: '#2d5a7a',
+  // криовзвесь (только четвёртый уровень, без подмены по теме)
+  Q0: '#040e18', // сердцевина
+  Q1: '#09202f', // толща
+  Q2: '#1d6f88', // свечение
+  Q3: '#7fe9f5', // край
+  Q4: '#eaffff', // игольчатые искры
   // разлом пустоты (только третий уровень, без подмены по теме)
   Z0: '#060310', // сердцевина разлома
   Z1: '#150a26', // толща
@@ -105,7 +135,17 @@ const TH_CITADEL = {
   G: 'G3', g: 'g3',   // кристаллы → аметистовые шпили
   B: 'B3', b: 'b3', V: 'V3', v: 'v3',
 };
-const THEMES = [TH_FOUNDRY, TH_REACTOR, TH_CITADEL];
+// Ледяной спуск: металл выцветает в стылую сталь, неон уходит в розу,
+// а подсветка антиграва — в мяту; красный по-прежнему значит только опасность.
+const TH_GLACIAL = {
+  K: 'K4', D: 'D4', d: 'd4', M: 'M4', m: 'm4', W: 'W4', w: 'w4',
+  C: 'C4', c: 'c4',   // неоновая кромка грунта — роза
+  P: 'P4', p: 'p4',   // подсветка антиграв-платформ — мята
+  Y: 'Y4', O: 'O4', o: 'o4',
+  G: 'G4', g: 'g4',   // кристаллы → ледяные друзы
+  B: 'B4', b: 'b4', V: 'V4', v: 'v4',
+};
+const THEMES = [TH_FOUNDRY, TH_REACTOR, TH_CITADEL, TH_GLACIAL];
 
 const TILE = 16;
 
@@ -440,6 +480,113 @@ function sawSprite(frame, th) {
 }
 
 // ------------------------------------------------------------
+//  ДРЕЙФЕР «DRIFTER» 12x12, 2 кадра — ледяная медуза, ходит по вертикали
+// ------------------------------------------------------------
+const DRIFTER = [
+  [
+    '....MMMM....',
+    '..MMWWWWMM..',
+    '.MWGGGGGGWM.',
+    'MWGGwwwwGGWM',
+    'MWGRwGGwRGWM',
+    'MWGGGGGGGGWM',
+    '.MWGGGGGGWM.',
+    '..MWWWWWWM..',
+    '...M.MM.M...',
+    '...C.MM.C...',
+    '....C..C....',
+    '.....CC.....',
+  ],
+  [
+    '....MMMM....',
+    '..MMWWWWMM..',
+    '.MWGGGGGGWM.',
+    'MWGGGGGGGGWM',
+    'MWGRwwwwRGWM',
+    'MWGGwwwwGGWM',
+    '.MWGGGGGGWM.',
+    '..MWWWWWWM..',
+    '...M.MM.M...',
+    '..C..MM..C..',
+    '..C...C..C..',
+    '...C..C.....',
+  ],
+];
+
+// ------------------------------------------------------------
+//  КОНЬКОБЕЖЕЦ «SKATER» 16x12, 2 кадра — разгоняется по наледи, гибнет от прыжка сверху
+// ------------------------------------------------------------
+const SKATER = [
+  [
+    '................',
+    '................',
+    '......MMMMM.....',
+    '....MMWWWWWMM...',
+    '..MMWWKKKKKWWM..',
+    '.MWWKKRRKKKKWM..',
+    '.MWKKKKKKKKKWM..',
+    '.MWWmmmmmmmWWM..',
+    '..MMMMMMMMMMM...',
+    '...WWWWWWWWWW...',
+    '..wwwwwwwwwwww..',
+    '................',
+  ],
+  [
+    '................',
+    '................',
+    '......MMMMM.....',
+    '....MMWWWWWMM...',
+    '..MMWWKKKKKWWM..',
+    '.MWWKKwRKKKKWM..',
+    '.MWKKKKKKKKKWM..',
+    '.MWWmmmmmmmWWM..',
+    '..MMMMMMMMMMM...',
+    'w..WWWWWWWWWW...',
+    '.wwwwwwwwwwwww..',
+    'w...............',
+  ],
+];
+
+// ------------------------------------------------------------
+//  ВЫЛЬ «HOWLER» 16x14, 2 кадра (покой / заряд) — висит на потолке,
+//  роняет криобомбы прямо вниз. Топтать нечего — только уйти с линии.
+// ------------------------------------------------------------
+const HOWLER = [
+  [
+    'MMMMMMMMMMMMMMMM',
+    'MddddddddddddddM',
+    '.MMMWWWWWWWWMMM.',
+    '...MWWKKKKWWM...',
+    '..MWWKKRRKKWWM..',
+    '..MWKKRRRRKKWM..',
+    '..MWKKKKKKKKWM..',
+    '..MWWKKKKKKWWM..',
+    '...MWWmmmmWWM...',
+    '....MWWWWWWM....',
+    '.....MMGGMM.....',
+    '......MGGM......',
+    '.......GG.......',
+    '................',
+  ],
+  [
+    'MMMMMMMMMMMMMMMM',
+    'MddddddddddddddM',
+    '.MMMWWWWWWWWMMM.',
+    '...MWWKKKKWWM...',
+    '..MWWKKYYKKWWM..',
+    '..MWKKYYYYKKWM..',
+    '..MWKKYwwYKKWM..',
+    '..MWWKKYYKKWWM..',
+    '...MWWmmmmWWM...',
+    '....MWWWWWWM....',
+    '....MMGGGGMM....',
+    '....MGGwwGGM....',
+    '.....MGGGGM.....',
+    '......MGGM......',
+  ],
+];
+
+// ------------------------------------------------------------
 //  БОСС «WARDEN» 32x24 — композиция: люк + корпус + двигатели
 // ------------------------------------------------------------
 const BOSS_HATCH = {
@@ -627,6 +774,78 @@ function boss3Sprite(eye, spin, mono) {
     const bx = SOV_CX - 1 + s * 7, len = 6 - Math.abs(s) * 2 + (spin % 2);
     q.vl(bx, 31 + Math.abs(s), len, 'M'); q.vl(bx + 1, 31 + Math.abs(s), len, 'd');
     q.p(bx, 31 + Math.abs(s) + len, 'C');
+  }
+  return c;
+}
+
+// ------------------------------------------------------------
+//  БОСС «HOARFROST» 48x36 — ледяной колосс GLACIAL DESCENT (процедурно).
+//  Не корпус на двигателях и не кольцо: колосс стоит в криовзвеси по пояс,
+//  наружу торчат плечи в ледяных шипах и визор-щель. Слабое место — корона
+//  на макушке: выдохшись после столба, колосс раскрывает её, и ядро топчется.
+// ------------------------------------------------------------
+//  полуширина корпуса по строкам 8..35 — плечи широкие, подол сходит в взвесь
+const HOAR_HALF = [6, 8, 10, 12, 15, 18, 20, 21, 21, 21, 20, 20, 19, 18,
+                   18, 17, 17, 17, 17, 17, 17, 17, 16, 16, 15, 14, 12, 9];
+function boss4Sprite(eye, open, frame, mono) {
+  const c = makeCanvas(48, 36), q = px(c.getContext('2d'), TH_GLACIAL, mono);
+  const cx = 24;
+  for (let i = 0; i < HOAR_HALF.length; i++) {
+    const y = 8 + i, hw = HOAR_HALF[i], prev = i ? HOAR_HALF[i - 1] : 0;
+    for (let dx = -hw; dx < hw; dx++) {
+      const ax = Math.abs(dx + 0.5);
+      let k = i < 4 ? 'm' : 'M';
+      if (ax > hw - 1) k = 'K';
+      else if (ax > hw - 2.5) k = 'd';
+      else if (ax > prev - 0.5) k = 'W';               // свежий иней на уступах
+      q.p(cx + dx, y, k);
+    }
+  }
+  // ледяные шипы на плечах: растут из ската брони вверх и наружу
+  for (const s of [-1, 1]) for (const [ox, len] of [[11, 7], [15, 5], [18, 4]]) {
+    let base = 0;
+    while (base < HOAR_HALF.length && HOAR_HALF[base] < ox) base++;
+    for (let i = 0; i < len; i++) {
+      const off = ox + (i >> 1);
+      q.p(s < 0 ? cx - off : cx + off - 1, 8 + base - 1 - i, i < 1 ? 'w' : i < 3 ? 'W' : 'm');
+    }
+  }
+  // визор-щель с двумя огнями
+  q.r(cx - 15, 17, 30, 6, 'K');
+  q.hl(cx - 15, 16, 30, 'd'); q.hl(cx - 15, 23, 30, 'd');
+  for (const s of [-1, 1]) {
+    const ex = s < 0 ? cx - 12 : cx + 6;
+    q.r(ex, 19, 6, 3, eye);
+    q.r(ex + 1, 20, 4, 1, eye === 'w' ? 'C' : 'w');
+  }
+  // морозные потёки по корпусу
+  for (const [x, y, h] of [[-11, 25, 6], [-4, 26, 8], [3, 25, 7], [9, 27, 5]]) {
+    q.vl(cx + x, y, h, 'W'); q.vl(cx + x + 1, y + 1, h - 2, 'm');
+  }
+  q.r(cx - 5, 26, 10, 4, 'd'); q.hl(cx - 5, 26, 10, 'm');   // нагрудная пластина
+  q.hl(cx - 3, 28, 6, open ? 'C' : 'c');
+
+  if (open) {                                              // корона раскрыта — ядро наружу
+    for (const s of [-1, 1]) for (let i = 0; i < 6; i++)    // половинки колпака отъехали
+      q.vl(cx + s * (9 + i), 4 + i, 5 - (i >> 1), i < 2 ? 'W' : 'm');
+    const half = [1, 2, 3, 4, 5, 6, 6, 6, 5, 4, 3, 2];
+    for (let y = 0; y < half.length; y++) {
+      const hw = half[y];
+      for (let dx = -hw; dx < hw; dx++) {
+        const ax = Math.abs(dx + 0.5);
+        q.p(cx + dx, y, ax > hw - 1 ? 'g' : ax > hw - 2 ? 'G' : (y + frame) % 4 < 2 ? 'w' : 'G');
+      }
+    }
+    q.r(cx - 2, 4, 4, 4, frame % 2 ? 'w' : 'Y');           // сердцевина пульсирует
+  } else {                                                 // глухой ледяной колпак
+    for (let y = 2; y <= 8; y++) {
+      const hw = Math.round(2 + (y - 2) * 0.9);
+      for (let dx = -hw; dx < hw; dx++) {
+        const ax = Math.abs(dx + 0.5);
+        q.p(cx + dx, y, ax > hw - 1 ? 'd' : y < 4 ? 'w' : ax > hw - 2.5 ? 'm' : 'W');
+      }
+    }
+    q.p(cx - 4, 5, 'C'); q.p(cx + 3, 5, 'C'); q.r(cx - 1, 3, 2, 2, 'c');
   }
   return c;
 }
@@ -964,6 +1183,107 @@ function tileVoidBody(frame) {
   for (let i = 0; i < 7; i++) {                     // искры в глубине
     const x = (i * 5 + frame * 3) % 16, y = (i * 7 + frame * 5) % 16;
     q.p(x, y, 'Z2'); q.p((x + 3) % 16, (y + 5) % 16, i % 3 ? 'Z2' : 'Z3');
+  }
+  return c;
+}
+
+// --- новые тайлы GLACIAL DESCENT ---
+
+// Наледь: твёрдый пол без неоновой кромки — по ней почти не тормозишь
+function tileIce(th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  q.r(0, 0, 16, 16, 'M');
+  q.hl(0, 0, 16, 'w'); q.hl(0, 1, 16, 'W'); q.hl(0, 2, 16, 'm');
+  for (const [x, y, h] of [[2, 4, 7], [5, 6, 5], [9, 4, 8], [12, 7, 6]]) {   // гранёные сколы
+    q.vl(x, y, h, 'm'); q.vl(x + 1, y + 1, h - 2, 'W');
+  }
+  q.vl(0, 3, 13, 'm'); q.vl(15, 3, 13, 'd');
+  q.hl(0, 15, 16, 'd');
+  q.p(3, 12, 'w'); q.p(11, 13, 'w'); q.p(7, 9, 'w');
+  return c;
+}
+
+// Цепкая стена: за иней и крючья можно держаться — сползать и отталкиваться.
+// face: 'l' — открыта левая грань, 'r' — правая, 'b' — обе.
+function tileGrip(face, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  q.r(0, 0, 16, 16, 'd');
+  q.hl(0, 0, 16, 'D'); q.hl(0, 15, 16, 'K');
+  q.r(2, 1, 12, 14, 'M'); q.hl(2, 1, 12, 'm');
+  q.r(6, 1, 4, 14, 'D');                                  // вертикальный жёлоб
+  for (let y = 2; y < 15; y += 4) { q.hl(6, y, 4, 'd'); q.p(7, y, 'm'); }
+  for (const s of face === 'b' ? [0, 1] : face === 'l' ? [0] : [1]) {
+    const edge = s ? 15 : 0, in1 = s ? 14 : 1, in2 = s ? 13 : 2;
+    for (let y = 0; y < 16; y += 2) { q.p(edge, y, 'W'); q.p(in1, y + 1, 'w'); }
+    for (let y = 1; y < 16; y += 5) { q.p(in1, y, 'C'); q.p(in2, y, 'c'); }   // крючья
+  }
+  return c;
+}
+
+// Сталактит: 0 — висит, 1 — трещит (телеграф), 2 — сорвался и летит
+function tileIcicle(stage, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  if (stage < 2) { q.r(3, 0, 10, 2, 'd'); q.hl(3, 0, 10, 'M'); }
+  const y0 = stage === 2 ? 0 : 2, tip = stage === 2 ? 15 : 13;
+  for (let y = y0; y <= tip; y++) {
+    const hw = Math.max(1, Math.round((1 - (y - y0) / (tip - y0 + 1)) * 4));
+    for (let dx = -hw; dx < hw; dx++) {
+      const ax = Math.abs(dx + 0.5);
+      q.p(8 + dx, y, ax > hw - 1 ? 'm' : ax > hw - 2 ? 'W' : 'w');
+    }
+  }
+  if (stage === 1) {                                      // трещины у основания
+    q.r(6, 2, 4, 1, 'Y');
+    for (const [x, y] of [[5, 3], [10, 4], [7, 5], [9, 6], [6, 7]]) q.p(x, y, 'K');
+  }
+  return c;
+}
+
+// Раструб пурги в стене: 0 — покой, 1 — предупреждение, 2 — дует.
+// dir — куда бьёт струя (1 — вправо, -1 — влево).
+function tileBlower(dir, stage, th) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'), th);
+  const X = x => (dir > 0 ? x : 15 - x);
+  const p = (x, y, k) => q.p(X(x), y, k);
+  const row = (x, y, w, k) => { for (let i = 0; i < w; i++) p(x + i, y, k); };
+  for (let y = 0; y < 16; y++) row(0, y, 16, 'M');
+  row(0, 0, 16, 'W'); row(0, 15, 16, 'K');
+  for (let y = 1; y < 15; y++) p(0, y, 'm');
+  for (let y = 2; y < 14; y++) {                          // конус раструба
+    const deep = Math.round(11 - Math.abs(y - 7.5) * 1.6);
+    for (let i = 0; i < deep; i++) p(15 - i, y, i < 1 ? 'd' : 'K');
+  }
+  const glow = stage === 2 ? 'C' : stage === 1 ? 'Y' : 'c';
+  for (let i = 0; i < 4; i++) row(6, 3 + i * 3, 3, i % 2 ? glow : 'd');
+  for (let y = 2; y < 14; y += 2) p(15, y, 'm');          // решётка на срезе
+  p(15, 7, stage ? 'w' : 'm'); p(15, 8, stage ? 'w' : 'm');
+  return c;
+}
+
+// Криовзвесь: поверхность (3 кадра) и толща (2 кадра). Вне тем — свой набор Q*.
+function tileCryoTop(frame) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'));
+  const surf = x => 3 + Math.round(1.5 * Math.sin((x + frame * 2.4) / 2.8));
+  for (let x = 0; x < 16; x++) {
+    const y = surf(x);
+    q.p(x, y, 'Q4');
+    q.r(x, y + 1, 1, 2, 'Q3');
+    q.r(x, y + 3, 1, 3, 'Q2');
+    q.r(x, y + 6, 1, 16 - y - 6, 'Q1');
+  }
+  for (let i = 0; i < 4; i++) {                           // игольчатый иней на поверхности
+    const x = (i * 5 + frame * 3) % 16, y = surf(x);
+    q.vl(x, y - 2, 2, 'Q4'); q.p(x, y - 3, 'Q3');
+  }
+  return c;
+}
+function tileCryoBody(frame) {
+  const c = makeCanvas(TILE, TILE), q = px(c.getContext('2d'));
+  q.r(0, 0, 16, 16, 'Q1');
+  q.r(1, 2, 14, 12, 'Q0');
+  for (let i = 0; i < 6; i++) {                           // взвесь кристаллов в глубине
+    const x = (i * 5 + frame * 4) % 16, y = (i * 7 + frame * 3) % 16;
+    q.p(x, y, 'Q2'); q.p((x + 4) % 16, (y + 6) % 16, i % 3 ? 'Q2' : 'Q3');
   }
   return c;
 }
@@ -1308,6 +1628,90 @@ function bgRamparts(w, h) {  // ближний слой: колоннада, з�
 }
 
 // ------------------------------------------------------------
+//  ФОНЫ — GLACIAL DESCENT (ледяной спуск): те же три слоя, но они
+//  стыкуются сами с собой по вертикали — уровень прокручивается вниз.
+// ------------------------------------------------------------
+function bgFrostSky(w, h) {
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  // свет в шахте меняется по глубине косинусом: темнее всего у стыка кадра,
+  // светлее в середине — при вертикальном повторе шва не видно
+  const ramp = ['#050d16', '#071220', '#0a1929', '#0d2134', '#10283f', '#133049', '#163a56'];
+  const lit = y => ramp[Math.min(ramp.length - 1, Math.floor((0.5 - 0.5 * Math.cos(y / h * Math.PI * 2)) * ramp.length))];
+  for (let y = 0; y < h; y++) q.r(0, y, w, 1, lit(y));
+  const R = rng(29);
+  // дальние ледопады — сплошные вертикальные натёки во всю высоту
+  for (let i = 0; i < 6; i++) {
+    const x = Math.floor(R() * w), bw = 4 + Math.floor(R() * 10);
+    q.r(x, 0, bw, h, 'V4');
+    q.vl(x, 0, h, 'v4'); q.vl(x + bw - 1, 0, h, 'K4');
+    for (let y = Math.floor(R() * 12); y < h; y += 9 + Math.floor(R() * 8))
+      q.hl(x + 1, y, Math.max(1, bw - 3), 'v4');
+  }
+  // ледяная взвесь в воздухе
+  for (let i = 0; i < 130; i++) {
+    const x = Math.floor(R() * w), y = Math.floor(R() * h), t = R();
+    q.p(x, y, t < 0.18 ? 'w4' : t < 0.55 ? 'W4' : 'M4');
+    if (t < 0.08) q.p(x, y + 1, 'M4');
+  }
+  return c;
+}
+
+function bgIceColumns(w, h) {  // дальний слой: колонны намёрзшего льда
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const R = rng(17);
+  let x = 0;
+  while (x < w) {
+    const bw = 14 + Math.floor(R() * 22);
+    q.r(x, 0, bw, h, 'D4');
+    q.vl(x, 0, h, 'd4'); q.vl(x + bw - 1, 0, h, 'K4');
+    // грани льда — тоже во всю высоту, иначе на стыке кадра будет шов
+    for (let i = 0; i < 2; i++) {
+      const fx = x + 2 + Math.floor(R() * (bw - 4));
+      q.vl(fx, 0, h, 'd4');
+      if (R() < 0.5) q.vl(fx + 1, 0, h, 'K4');
+    }
+    // намёрзшие пояса: шаг 56 делит высоту нацело, поэтому повтор сходится
+    for (let y = 6 + Math.floor(R() * 10); y < h; y += 56) {
+      q.r(x + 1, y, bw - 2, 3, 'K4');
+      q.hl(x + 1, y, bw - 2, 'd4');
+    }
+    x += bw + 2 + Math.floor(R() * 8);
+  }
+  return c;
+}
+
+function bgFrostRibs(w, h) {  // ближний слой: мёрзлые трубы, хомуты и сосульки
+  const c = makeCanvas(w, h), q = px(c.getContext('2d'));
+  const R = rng(71);
+  const STEP = 56;                       // шаг хомутов делит высоту — повтор бесшовный
+  let x = 4;
+  while (x < w) {
+    const kind = R();
+    if (kind < 0.55) {                   // мёрзлая труба во всю высоту
+      const bw = 6 + Math.floor(R() * 6);
+      q.r(x, 0, bw, h, 'K4');
+      q.vl(x, 0, h, 'D4'); q.vl(x + bw - 1, 0, h, 'K4');
+      for (let y = 10 + Math.floor(R() * 20); y < h; y += STEP) {   // хомут
+        q.r(x - 2, y, bw + 4, 5, 'D4'); q.hl(x - 2, y, bw + 4, 'd4'); q.hl(x - 2, y + 4, bw + 4, 'K4');
+        q.p(x + 1, y + 2, 'c4');
+        for (let i = 0; i < bw; i += 4) {                           // сосульки под хомутом
+          const len = 3 + Math.floor(R() * 6);
+          q.vl(x + i, y + 5, len, 'd4'); q.p(x + i, y + 5 + len, 'M4');
+        }
+      }
+    } else {                             // трос в инее
+      q.vl(x, 0, h, 'D4'); q.vl(x + 1, 0, h, 'K4');
+      for (let y = 24 + Math.floor(R() * 20); y < h; y += STEP) {
+        q.r(x - 1, y, 4, 3, 'D4'); q.hl(x - 1, y, 4, 'd4');
+        q.vl(x, y + 3, 4 + Math.floor(R() * 5), 'd4');
+      }
+    }
+    x += 30 + Math.floor(R() * 54);
+  }
+  return c;
+}
+
+// ------------------------------------------------------------
 //  Сборка
 // ------------------------------------------------------------
 function buildTheme(th) {
@@ -1335,6 +1739,10 @@ function buildTheme(th) {
   T.belt = [-1, 1].map(d => [0, 1, 2, 3].map(f => tileConveyor(d, f, th)));
   T.press = [pressHead(false, th), pressHead(true, th)];
   T.shaft = pressShaft(th);
+  T.ice = tileIce(th);
+  T.grip = { l: tileGrip('l', th), r: tileGrip('r', th), b: tileGrip('b', th) };
+  T.icicle = [tileIcicle(0, th), tileIcicle(1, th), tileIcicle(2, th)];
+  T.blower = [-1, 1].map(d => [0, 1, 2].map(st => tileBlower(d, st, th)));
   return T;
 }
 
@@ -1348,6 +1756,8 @@ function buildAssets() {
   A.cell = CELL.map(r => spriteFromRows(r));
   // разлом пустоты живёт вне тем — своя палитра Z*
   A.rift = { top: [tileVoidTop(0), tileVoidTop(1), tileVoidTop(2)], body: [tileVoidBody(0), tileVoidBody(1)] };
+  // криовзвесь — тоже вне тем, своя палитра Q*
+  A.cryo = { top: [tileCryoTop(0), tileCryoTop(1), tileCryoTop(2)], body: [tileCryoBody(0), tileCryoBody(1)] };
 
   A.boss = {
     dormant: bossSprite('closed', 'G', 'r', 'off'),
@@ -1373,12 +1783,24 @@ function buildAssets() {
     hot: sovSpin('w'),                 // осколок на привязи / гнев
     flash: boss3Sprite('w', 0, 'w'),
   };
+  // ледяной колосс: корона закрыта, пока он не выдохся
+  const hoar = (eye, open) => [0, 1, 2, 3].map(f => boss4Sprite(eye, open, f));
+  A.boss4 = {
+    dormant: hoar('r', false),         // вмёрз в взвесь
+    live: hoar('R', false),            // бродит по взвеси
+    tell: hoar('Y', false),            // телеграф столба
+    hot: hoar('w', false),             // бьёт столбом
+    open: hoar('Y', true),             // выдохся — корона раскрыта
+    flash: boss4Sprite('w', true, 0, 'w'),
+  };
 
   // фоны собираются лениво — по одному набору на тему
   const BG = [
     () => ({ far: bgSky(320, 224), mid: bgCity(480, 224), near: bgStructures(640, 224) }),
     () => ({ far: bgSporeSky(320, 224), mid: bgFungalTowers(480, 224), near: bgRoots(640, 224) }),
     () => ({ far: bgAshSky(320, 224), mid: bgSpires(480, 224), near: bgRamparts(640, 224) }),
+    // вертикальный уровень: слои стыкуются сами с собой и по высоте
+    () => ({ far: bgFrostSky(320, 224), mid: bgIceColumns(320, 224), near: bgFrostRibs(320, 224) }),
   ];
 
   // темы: тайлы + враги + фоны
@@ -1392,6 +1814,9 @@ function buildAssets() {
       leaper: Object.fromEntries(Object.keys(LEAPER).map(k =>
         [k, [spriteFromRows(LEAPER[k], false, th), spriteFromRows(LEAPER[k], true, th)]])),
       seeker: SEEKER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      drifter: DRIFTER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      skater: SKATER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
+      howler: HOWLER.map(r => [spriteFromRows(r, false, th), spriteFromRows(r, true, th)]),
       saw: [0, 1, 2, 3].map(f => sawSprite(f, th)),
       portal: [portal(0, th), portal(1, th)],
       moving: movingPlatform(th),

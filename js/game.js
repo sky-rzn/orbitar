@@ -1,14 +1,15 @@
 // ============================================================
-//  ORBITAR — игровой движок (три уровня)
+//  ORBITAR — игровой движок (четыре уровня)
 // ============================================================
 'use strict';
 (() => {
 const W = 320, H = 224, T = TILE, EPS = 0.001;
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const A = buildAssets();
-const LEVELS = [LEVEL1, LEVEL2, LEVEL3];
+const LEVELS = [LEVEL1, LEVEL2, LEVEL3, LEVEL4];
 
 // ---------- масштабирование под окно (целочисленное) ----------
 function fit() {
@@ -25,10 +26,11 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
-// чит-коды: LVL1..LVL3 — в начало уровня, BOSS1..BOSS3 — к его боссу, NEXT — сразу на следующий уровень
+// чит-коды: LVL1..LVL4 — в начало уровня, BOSS1..BOSS4 — к его боссу, NEXT — сразу на следующий уровень
 const CHEATS = {
-  LVL1: { lv: 0 }, LVL2: { lv: 1 }, LVL3: { lv: 2 },
-  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true }, BOSS3: { lv: 2, boss: true },
+  LVL1: { lv: 0 }, LVL2: { lv: 1 }, LVL3: { lv: 2 }, LVL4: { lv: 3 },
+  BOSS1: { lv: 0, boss: true }, BOSS2: { lv: 1, boss: true },
+  BOSS3: { lv: 2, boss: true }, BOSS4: { lv: 3, boss: true },
   NEXT: { next: true },
 };
 const CHEAT_CODES = Object.keys(CHEATS);
@@ -74,26 +76,26 @@ function textShadow(str, x, y, col, scale = 1) { text(str, x + scale, y + scale,
 const mid = (str, scale = 1) => Math.round(W / 2 - str.length * 4 * scale / 2);
 
 // ---------- текущий уровень ----------
-let LV, MAP, LW, LH, LEVEL_W, TL, TH, levelCanvas, ents, checkpoints, crumbleMask, levelIdx;
+let LV, MAP, LW, LH, LEVEL_W, LEVEL_H, VERT, TL, TH, levelCanvas, ents, checkpoints, crumbleMask, levelIdx;
 
 function ch(x, y) { if (x < 0 || x >= LW) return '#'; if (y < 0 || y >= LH) return '.'; return MAP[y][x]; }
-// грунт, платформы, решётки вентиляторов и ленты держат всегда;
-// осыпающаяся плита — пока цела, фазовая — пока её группа не погасла
+// грунт, платформы, решётки вентиляторов, ленты, наледь, цепкие стены и раструбы
+// держат всегда; осыпающаяся плита — пока цела, фазовая — пока её группа не погасла
+const STATIC = '#PU<>INGg';            // тайлы, которые держат всегда
 function isSolid(x, y) {
   const c = ch(x, y);
-  if (c === '#' || c === 'P' || c === 'U' || c === '<' || c === '>') return true;
+  if (STATIC.includes(c)) return true;
   if (c === 'X') return crumbleMask[y * LW + x] === 1;
   if (c === '=') return phaseStage(0) !== 2;
   if (c === '+') return phaseStage(1) !== 2;
   return false;
 }
-const isStatic = (x, y) => {
-  const c = ch(x, y);
-  return c === '#' || c === 'P' || c === 'U' || c === '<' || c === '>';
-};
+const isStatic = (x, y) => STATIC.includes(ch(x, y));
 const isOneWay = (x, y) => ch(x, y) === '-';
 
-const PHYS = { accel: 0.22, maxSpeed: 1.7, friction: 0.28, airAccel: 0.16, gravity: 0.24, maxFall: 5.2, jump: -5.3, jumpCut: -1.8, spring: -7.6, coyote: 6, buffer: 6 };
+const PHYS = { accel: 0.22, maxSpeed: 1.7, friction: 0.28, airAccel: 0.16, gravity: 0.24, maxFall: 5.2, jump: -5.3, jumpCut: -1.8, spring: -7.6, coyote: 6, buffer: 6,
+               iceAccel: 0.075, iceFriction: 0.014,          // наледь: разгон вязкий, торможения почти нет
+               wallSlide: 0.95, wallJump: -5.0, wallKick: 2.3, wallLock: 9 };
 const CRUMBLE = { hold: 42, gone: 150 };     // кадров под ногами / до восстановления
 const SEEK_CALM = 60;                        // после возрождения искатель секунду висит дома
 const GATE = { period: 170, warn: 90, on: 110 }; // цикл затвора: выкл → предупреждение → луч
@@ -102,6 +104,9 @@ const GATE = { period: 170, warn: 90, on: 110 }; // цикл затвора: в�
 const PHASE = { period: 260, solo: 90, both: 40 };
 const PRESS = { wait: 74, warn: 26, hold: 24, accel: 0.85, maxFall: 8.5, rise: 0.62 };
 const BELT = 0.62;                           // тяга конвейерной ленты, px/кадр
+const GUST = { period: 240, warn: 140, on: 170, push: 0.55 };  // цикл раструба: покой → предупреждение → пурга
+const ICICLE = { warn: 32, grav: 0.34, maxFall: 7.5, back: 210, reach: 12 };
+const FLOOD = { rise: 0.1, drain: 2 * T };  // криовзвесь на арене: прибывает всегда, уходит от попаданий
 
 // 0 — тверда, 1 — предупреждение (ещё тверда), 2 — призрак
 function phaseStage(group) {
@@ -114,7 +119,7 @@ function phaseStage(group) {
 let ARENA, boss, shots, waves, totalCells, cellsBank = 0, runTime = 0;
 
 // ---------- звук ----------
-const TRACKS = ['foundry', 'reactor', 'citadel'];
+const TRACKS = ['foundry', 'reactor', 'citadel', 'glacial'];
 // панорама по положению источника относительно центра экрана
 const panOf = x => Math.max(-1, Math.min(1, (x - cam.x - W / 2) / (W / 2)));
 const snd = (name, x, o) => SFX.play(name, x == null ? o : Object.assign({ pan: panOf(x) }, o));
@@ -124,15 +129,17 @@ const curTrack = () => (boss && boss.state !== 'idle' && boss.state !== 'dead' ?
 function loadLevel(idx) {
   levelIdx = idx;
   LV = LEVELS[idx];
-  MAP = LV.map; LW = MAP[0].length; LH = MAP.length; LEVEL_W = LW * T;
+  MAP = LV.map; LW = MAP[0].length; LH = MAP.length; LEVEL_W = LW * T; LEVEL_H = LH * T;
+  VERT = !!LV.vertical;
   TH = A.themes[LV.theme]; TL = TH.tiles;
   crumbleMask = new Int8Array(LW * LH);
   ents = { cells: [], drones: [], crawlers: [], turrets: [], movers: [], springs: [], anim: [],
            crumbles: [], vents: [], gates: [], melt: [], phases: [], belts: [], presses: [],
-           rifts: [], saws: [], leapers: [], seekers: [], portal: null, spawn: { x: 16, y: 100 } };
+           rifts: [], saws: [], leapers: [], seekers: [], cryos: [], icicles: [], gusts: [],
+           drifters: [], skaters: [], howlers: [], portal: null, spawn: { x: 16, y: 100 } };
   checkpoints = [];
 
-  levelCanvas = makeCanvas(LEVEL_W, H);
+  levelCanvas = makeCanvas(LEVEL_W, LEVEL_H);
   const lc = levelCanvas.getContext('2d');
   for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
     const c = MAP[y][x], px = x * T, py = y * T;
@@ -208,22 +215,63 @@ function loadLevel(idx) {
                                     st: 0, t: 50 + (x * 17) % 60, alive: true, home: true }); break;
       case 'k': ents.seekers.push({ x: px + 2, y: py + 2, hx: px + 2, hy: py + 2, vx: 0, vy: 0,
                                     alive: true, t: (x * 23) % 60, calm: 0, home: true }); break;
+      case 'I': lc.drawImage(TL.ice, px, py); break;
+      case 'N': {                                  // цепкая стена: иней рисуем на открытой грани
+        const l = !isStatic(x - 1, y), r = !isStatic(x + 1, y);
+        lc.drawImage(TL.grip[l && r ? 'b' : l ? 'l' : 'r'], px, py); break;
+      }
+      case 'Y': {                                  // сталактит: считаем, докуда ему падать
+        let yy = y + 1;
+        while (yy < LH && !isStatic(x, yy)) yy++;
+        ents.icicles.push({ x: px, y: py, y0: py, hitY: yy * T, vy: 0, st: 0, t: 0 }); break;
+      }
+      case 'G': case 'g': {                        // раструб пурги: полоса до первой стены
+        const dir = c === 'G' ? 1 : -1;
+        let n = 0, xx = x + dir;
+        while (xx >= 0 && xx < LW && !isStatic(xx, y) && n < 16) { xx += dir; n++; }
+        const up = !isStatic(x, y - 1) && n && !isStatic(x + dir, y - 1) ? 1 : 0;
+        ents.gusts.push({ x: px, y: py, dir, tx: dir > 0 ? px + T : px - n * T, w: n * T,
+                          top: py - up * T, h: (up + 1) * T, st: -1, phase: (y * 43) % GUST.period });
+        break;
+      }
+      case 'Z': ents.cryos.push({ x: px, y: py, top: true }); break;
+      case 'z': ents.cryos.push({ x: px, y: py, top: false }); break;
+      case 'y': {                                  // дрейфер ходит по вертикали
+        let minY = y, maxY = y;
+        while (minY > 0 && !isStatic(x, minY - 1) && y - minY < 4) minY--;
+        while (maxY < LH - 1 && !isStatic(x, maxY + 1) && maxY - y < 4) maxY++;
+        ents.drifters.push({ x: px + 2, y: py + 2, hy: py + 2, minY: minY * T + 2, maxY: maxY * T + 2,
+                             dir: 1, alive: true, t: Math.random() * 100 }); break;
+      }
+      case 's': ents.skaters.push({ x: px, y: py + 5, hx: px, dir: -1, alive: true,
+                                    t: Math.random() * 60 | 0, home: true }); break;
+      case 'h': ents.howlers.push({ x: px, y: py, t: 0 }); break;
     }
   }
-  for (const col of LV.checkpoints) {
-    let c = col, row = LH;
+  for (const def of LV.checkpoints) {
+    if (Array.isArray(def)) {                     // вертикальный уровень: [колонка, строка пола]
+      checkpoints.push({ x: def[0] * T + 3, y: def[1] * T - 20, col: def[0], row: def[1] });
+      continue;
+    }
+    let c = def, row = LH;
     for (let d = 0; d < 8 && row === LH; d++) {   // колонка без пола: ищем ближайшую с твёрдой землёй
-      for (const cc of [col - d, col + d]) {
+      for (const cc of [def - d, def + d]) {
         if (cc < 0 || cc >= LW) continue;         // ch() за краем карты врёт «#»
         row = 0; while (row < LH && ch(cc, row) !== '#') row++;
         if (row < LH) { c = cc; break; }
       }
     }
-    checkpoints.push({ x: c * T + 3, y: row * T - 20, col: c });
+    checkpoints.push({ x: c * T + 3, y: row * T - 20, col: c, row });
   }
   totalCells = ents.cells.length;
-  ARENA = { left: (LW - 20) * T, trigger: (LW - 18) * T, floorY: 11 * T,
-            xMin: (LW - 20) * T + 10, xMax: (LW - 6) * T - BOSS_BOX[LV.boss].w };
+  // Арена вертикального уровня — шахта в самом низу: барьер не сбоку, а над головой,
+  // а пол ей заменяет криовзвесь, которую босс гонит вверх.
+  ARENA = LV.arena
+    ? { vert: true, left: 0, top: LV.arena.top * T, trigger: LV.arena.trigger * T,
+        floorY: LV.arena.floor * T, xMin: LV.arena.x0 * T,
+        xMax: LV.arena.x1 * T - BOSS_BOX[LV.boss].w }
+    : { left: (LW - 20) * T, trigger: (LW - 18) * T, floorY: 11 * T,
+        xMin: (LW - 20) * T + 10, xMax: (LW - 6) * T - BOSS_BOX[LV.boss].w };
   boss = null;
 }
 
@@ -237,6 +285,10 @@ const BOSS_BOX = {
   // осколком. Рамка вписана в круглый обод, чтобы не убивать в пустых углах спрайта.
   sovereign: { w: 44, h: 40, box: [7, 3, 30, 28], ring: true,
                shield: ['wake', 'reign', 'throne', 'tether', 'curtain', 'recoil'] },
+  // Ледяной колосс стоит в криовзвеси по пояс: броня смертельна всегда, кроме
+  // мгновений, когда он, выдохшись после столба, раскрывает корону на макушке.
+  hoarfrost: { w: 48, h: 36, box: [5, 12, 38, 24], core: [6, 0, 36, 14],
+               shield: ['wake', 'swim', 'aim', 'erupt', 'recoil'], weak: 'spent' },
 };
 const bossDef = () => BOSS_BOX[boss.kind];
 const bossActive = () => boss.state !== 'idle' && boss.state !== 'dead';
@@ -249,7 +301,9 @@ const bossBox = () => bossRect('box');
 function resetBoss() {
   const kind = LV.boss, d = BOSS_BOX[kind];
   boss = { kind, state: 'idle', hp: LV.bossHp, t: 0, timer: 0, boltT: 0, flash: 0, vy: 0, dir: -1,
-           orb: null, anchorX: 0, sweep: 0, x: (LW - 10) * T + 8, y: ARENA.floorY - d.h };
+           orb: null, anchorX: 0, sweep: 0, jetX: 0, flood: ARENA.floorY,
+           x: ARENA.vert ? Math.round((ARENA.xMin + ARENA.xMax) / 2) : (LW - 10) * T + 8,
+           y: ARENA.floorY - d.h + (ARENA.vert ? 14 : 0) };
   shots = []; waves = [];
 }
 
@@ -279,11 +333,16 @@ function reset(full) {
     q.x = far; q.dir = far === q.minX ? 1 : -1;
   }
   for (const c of ents.crumbles) { c.st = 0; c.t = 0; crumbleMask[c.ty * LW + c.tx] = 1; }
+  for (const i of ents.icicles) { i.st = 0; i.t = 0; i.y = i.y0; i.vy = 0; }
+  for (const d of ents.drifters) { d.alive = true; d.y = d.hy; d.dir = 1; }
+  ents.skaters = ents.skaters.filter(k => k.home);
+  for (const k of ents.skaters) { k.alive = true; k.dir = -1; k.x = k.hx; }
+  for (const h of ents.howlers) h.t = 0;
   if (full || boss.state !== 'dead') resetBoss(); // побеждённый босс не воскресает на чекпоинте
   shots = [];
   P = { x: sp.x, y: sp.y, vx: 0, vy: 0, w: 10, h: 20, face: 1, grounded: false, coyote: 0, jbuf: 0,
-        animT: 0, onMover: null, squash: 0, jumping: false, lift: 0 };
-  cam = { x: Math.max(0, Math.min(LEVEL_W - W, P.x - W / 2)) };
+        animT: 0, onMover: null, squash: 0, jumping: false, lift: 0, wall: 0, lock: 0, gust: 0 };
+  cam = { x: clamp(P.x - W / 2, 0, LEVEL_W - W), y: clamp(P.y - H / 2, 0, LEVEL_H - H) };
   particles = [];
   state = 'play'; deadTimer = 0; shake = 0;
   if (full) frame = 0;
@@ -303,13 +362,14 @@ function nextLevel() {
   runTime += elapsed;
   startLevel(levelIdx + 1);
 }
+function camSnap() { cam.x = clamp(P.x - W / 2, 0, LEVEL_W - W); cam.y = clamp(P.y - H / 2, 0, LEVEL_H - H); }
 function cheatWarp(lv, toBoss) {
   if (lv !== levelIdx || !toBoss) {                  // прыжок на другой уровень (и любой LVL) — уровень с нуля
     if (lv === 0) { cellsBank = 0; runTime = 0; }    // с первого уровня забег начинается заново
     startLevel(lv);
   }
   if (toBoss) { cp = checkpoints.length - 1; reset(false); }
-  cam.x = Math.max(0, Math.min(LEVEL_W - W, P.x - W / 2)); // без плавного пролёта камеры через весь уровень
+  camSnap();                                         // без плавного пролёта камеры через весь уровень
   intro = 0; cheatMsg = 150;
   SFX.play('cheat');
   spawnParticles(P.x + 5, P.y + 10, 30, ['#ff3fa8', '#22e5ff', '#e6ecff'], 2.5, 0.02, 30);
@@ -321,12 +381,11 @@ startLevel(0);
   const lv = /lv=(\d+)/.exec(location.hash);
   if (lv && +lv[1] >= 1 && +lv[1] <= LEVELS.length) startLevel(+lv[1] - 1);
   const m = /x=(\d+)&y=(\d+)/.exec(location.hash);
-  if (m) { P.x = +m[1] * T + 3; P.y = +m[2] * T + T - 20; cam.x = Math.max(0, Math.min(LEVEL_W - W, P.x - W / 2)); intro = 0; }
+  if (m) { P.x = +m[1] * T + 3; P.y = +m[2] * T + T - 20; camSnap(); intro = 0; }
 }
 
 // ---------- утилиты ----------
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function spawnParticles(x, y, n, cols, spread = 2.5, g = 0.12, life = 30) {
   for (let i = 0; i < n; i++) particles.push({
     x, y, vx: (Math.random() - 0.5) * spread * 2, vy: (Math.random() - 0.8) * spread, g,
@@ -338,10 +397,15 @@ function die() {
   SFX.stopLoops(); SFX.music(null); SFX.play('die');
   spawnParticles(P.x + 5, P.y + 10, 40, ['#aab4d4', '#ff9a2e', '#22e5ff', '#e6ecff'], 3.5, 0.15, 40);
 }
-const onScreen = x => x > cam.x - 32 && x < cam.x + W + 32;
+const onScreen = (x, y) => x > cam.x - 40 && x < cam.x + W + 40 &&
+                           (y == null || (y > cam.y - 40 && y < cam.y + H + 40));
 const gateStage = g => {
   const t = (frame + g.phase) % GATE.period;
   return t < GATE.warn ? 0 : t < GATE.on ? 1 : 2;
+};
+const gustStage = q => {
+  const t = (frame + q.phase) % GUST.period;
+  return t < GUST.warn ? 0 : t < GUST.on ? 1 : 2;
 };
 
 // ---------- коллизии ----------
@@ -435,6 +499,40 @@ function updateSaws() {
   }
 }
 
+// раструбы: звук на смене стадии (предупреждение → пурга)
+function updateGusts() {
+  for (const q of ents.gusts) {
+    const st = gustStage(q);
+    if (st === q.st) continue;
+    if (q.st >= 0 && st > 0 && q.w && onScreen(q.x, q.y)) snd(st === 1 ? 'gateWarn' : 'gust', q.x);
+    q.st = st;
+  }
+}
+
+// Сталактит срывается, когда под ним проходят: трещит, падает, разбивается, отрастает
+function updateIcicles() {
+  for (const i of ents.icicles) {
+    if (i.st === 0) {
+      if (state === 'play' && P.y + P.h > i.y + T && onScreen(i.x, i.y) &&
+          P.x + P.w > i.x - ICICLE.reach && P.x < i.x + T + ICICLE.reach) {
+        i.st = 1; i.t = ICICLE.warn; snd('crack', i.x);
+      }
+    } else if (i.st === 1) {
+      if (--i.t <= 0) { i.st = 2; i.vy = 0; }
+    } else if (i.st === 2) {
+      i.vy = Math.min(ICICLE.maxFall, i.vy + ICICLE.grav);
+      i.y += i.vy;
+      if (i.y + T >= i.hitY) {
+        i.st = 3; i.t = ICICLE.back;
+        if (onScreen(i.x, i.y)) {
+          snd('shatter', i.x);
+          spawnParticles(i.x + 8, i.hitY - 5, 14, ['#f0ffff', '#a5d8e2', ...LV.fx.lift], 2.6, 0.16, 28);
+        }
+      }
+    } else if (--i.t <= 0) { i.st = 0; i.y = i.y0; i.vy = 0; }
+  }
+}
+
 // затворы: звук на смене стадии (предупреждение → луч)
 function updateGates() {
   for (const g of ents.gates) {
@@ -457,6 +555,39 @@ function beltPush() {
   if (dir) moveX(Math.sign(dir) * BELT);
 }
 
+// пол под ногами из наледи?
+function onIce() {
+  const ty = Math.floor((P.y + P.h) / T);
+  for (let tx = Math.floor(P.x / T); tx <= Math.floor((P.x + P.w - EPS) / T); tx++)
+    if (ch(tx, ty) === 'I') return true;
+  return false;
+}
+
+// цепкая стена держит, пока игрок жмёт в неё
+function wallGrip() {
+  P.wall = 0;
+  if (P.grounded) return;
+  const y1 = Math.floor((P.y + 3) / T), y2 = Math.floor((P.y + P.h - 4) / T);
+  for (const d of [-1, 1]) {
+    if (d < 0 ? !inp.left() : !inp.right()) continue;
+    const tx = Math.floor((d < 0 ? P.x - 1 : P.x + P.w) / T);
+    for (let ty = y1; ty <= y2; ty++) if (ch(tx, ty) === 'N') { P.wall = d; break; }
+  }
+}
+
+// пурга из раструба сдувает вбок — и с площадки, и со стены
+function gustPush() {
+  P.gust = 0;
+  for (const q of ents.gusts) {
+    if (!q.w || gustStage(q) !== 2) continue;
+    if (P.x + P.w > q.tx && P.x < q.tx + q.w && P.y + P.h > q.top && P.y < q.top + q.h) {
+      moveX(q.dir * GUST.push);
+      P.gust = q.dir;
+      if (frame % 6 === 0) spawnParticles(P.x + 5, P.y + 8, 1, ['#f0ffff', '#a5d8e2'], 1.2, 0, 14);
+    }
+  }
+}
+
 function touchCrumbles() {                       // плита начинает сыпаться под весом игрока
   if (!P.grounded) return;
   const ty = Math.floor((P.y + P.h) / T);
@@ -472,11 +603,15 @@ function updatePlayer() {
   if (P.onMover) { P.x += P.onMover.dx; P.y += P.onMover.dy; }
 
   const wasGrounded = P.grounded;
-  // горизонталь
-  const ax = P.grounded ? PHYS.accel : PHYS.airAccel;
-  if (inp.left()) { P.vx -= ax; P.face = -1; }
+  // горизонталь; на наледи разгон вязкий, а тормозить почти нечем
+  const icy = P.grounded && onIce();
+  const ax = P.grounded ? (icy ? PHYS.iceAccel : PHYS.accel) : PHYS.airAccel;
+  const fric = icy ? PHYS.iceFriction : PHYS.friction;
+  if (P.lock > 0) P.lock--;                       // после толчка от стены ввод не перебивает отскок
+  if (P.lock > 0) { /* летим по инерции отскока */ }
+  else if (inp.left()) { P.vx -= ax; P.face = -1; }
   else if (inp.right()) { P.vx += ax; P.face = 1; }
-  else if (P.grounded) { P.vx = Math.abs(P.vx) < PHYS.friction ? 0 : P.vx - Math.sign(P.vx) * PHYS.friction; }
+  else if (P.grounded) { P.vx = Math.abs(P.vx) < fric ? 0 : P.vx - Math.sign(P.vx) * fric; }
   else P.vx *= 0.98;
   P.vx = clamp(P.vx, -PHYS.maxSpeed, PHYS.maxSpeed);
 
@@ -487,11 +622,24 @@ function updatePlayer() {
     P.vy = PHYS.jump; P.coyote = 0; P.jbuf = 0; P.grounded = false; P.onMover = null; P.jumping = true;
     SFX.play('jump');
     spawnParticles(P.x + 5, P.y + P.h, 5, ['#6c7aa6', '#aab4d4'], 1.2, 0.05, 12);
+  } else if (P.jbuf > 0 && P.wall) {              // толчок от цепкой стены
+    P.vy = PHYS.wallJump; P.vx = -P.wall * PHYS.wallKick; P.face = -P.wall;
+    P.jbuf = 0; P.jumping = true; P.lock = PHYS.wallLock;
+    SFX.play('wallJump');
+    spawnParticles(P.x + (P.wall > 0 ? 10 : 0), P.y + 12, 7, LV.fx.lift, 1.8, 0.05, 18);
+    P.wall = 0;
   }
   if (P.jumping && !inp.jump() && P.vy < PHYS.jumpCut) P.vy = PHYS.jumpCut; // переменная высота
   if (P.vy >= 0) P.jumping = false;
 
   P.vy = Math.min(PHYS.maxFall, P.vy + PHYS.gravity);
+
+  // держась за иней цепкой стены, сползаем медленно
+  if (P.wall && P.vy > PHYS.wallSlide) {
+    P.vy = PHYS.wallSlide;
+    if (frame % 5 === 0)
+      spawnParticles(P.x + (P.wall > 0 ? 10 : 0), P.y + 14, 1, ['#f0ffff', '#a5d8e2'], 0.8, 0.06, 14);
+  }
 
   // восходящий поток вентилятора
   P.lift = Math.max(0, P.lift - 1);
@@ -505,8 +653,13 @@ function updatePlayer() {
   moveX(P.vx);
   moveY(P.vy);
   beltPush();
+  gustPush();
   touchCrumbles();
-  if (bossActive() && P.x < ARENA.left + 16) { P.x = ARENA.left + 16; P.vx = 0; } // энергобарьер арены
+  wallGrip();
+  if (bossActive()) {                              // энергобарьер арены: сбоку или над головой
+    if (ARENA.vert) { if (P.y < ARENA.top + 14) { P.y = ARENA.top + 14; P.vy = Math.max(0, P.vy); } }
+    else if (P.x < ARENA.left + 16) { P.x = ARENA.left + 16; P.vx = 0; }
+  }
 
   if (P.grounded && !wasGrounded) {
     P.squash = 6; SFX.play('land');
@@ -528,7 +681,8 @@ function updatePlayer() {
   // чекпоинты
   if (P.grounded) {
     const was = cp;
-    for (let i = cp + 1; i < checkpoints.length; i++) if (P.x >= checkpoints[i].col * T) cp = i;
+    for (let i = cp + 1; i < checkpoints.length; i++)
+      if (VERT ? P.y + P.h >= checkpoints[i].row * T : P.x >= checkpoints[i].col * T) cp = i;
     if (cp !== was && intro <= 0) SFX.play('checkpoint');
   }
 
@@ -547,6 +701,9 @@ function updatePlayer() {
   for (const a of ents.anim) if (a.kind === 'spikes' && overlap(hit, { x: a.x + 1, y: a.y + 2, w: 14, h: 10 })) die();
   for (const m of ents.melt) if (overlap(hit, { x: m.x, y: m.y + (m.top ? 5 : 0), w: T, h: m.top ? T - 5 : T })) die();
   for (const r of ents.rifts) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 4 : 0), w: T, h: r.top ? T - 4 : T })) die();
+  for (const r of ents.cryos) if (overlap(hit, { x: r.x, y: r.y + (r.top ? 5 : 0), w: T, h: r.top ? T - 5 : T })) die();
+  for (const i of ents.icicles) if (i.st === 2 && overlap(hit, { x: i.x + 5, y: i.y + 1, w: 6, h: 14 })) die();
+  for (const h of ents.howlers) if (overlap(hit, { x: h.x + 2, y: h.y + 2, w: 12, h: 12 })) die();
   for (const p of ents.presses) if (overlap(hit, { x: p.x + 1, y: p.y, w: 14, h: 16 })) die();
   for (const q of ents.saws) if (overlap(hit, { x: q.x + 2, y: q.y + 2, w: 12, h: 12 })) die();
   for (const g of ents.gates) if (gateStage(g) === 2 && overlap(hit, { x: g.x + 5, y: g.beamY, w: 6, h: g.beamH })) die();
@@ -585,8 +742,22 @@ function updatePlayer() {
       spawnParticles(k.x + 6, k.y + 6, 22, ['#c46bff', ...LV.fx.lift], 3, 0.1, 34);
     }
   }
+  for (const d of ents.drifters) {
+    if (!d.alive) continue;
+    if (stompOrDie(hit, { x: d.x + 1, y: d.y + 1, w: 10, h: 10 }, d.y + 4)) {
+      d.alive = false;
+      spawnParticles(d.x + 6, d.y + 6, 22, ['#9bf0ff', ...LV.fx.lift], 3, 0.1, 34);
+    }
+  }
+  for (const k of ents.skaters) {
+    if (!k.alive) continue;
+    if (stompOrDie(hit, { x: k.x + 2, y: k.y + 2, w: 12, h: 8 }, k.y + 4)) {
+      k.alive = false;
+      spawnParticles(k.x + 8, k.y + 6, 24, [...LV.fx.dust, '#ff3b3b', '#f0ffff'], 3, 0.12, 36);
+    }
+  }
   bossHazards(hit);
-  if (P.y > H + 8) die();
+  if (P.y > LEVEL_H + 8) die();
 
   // портал (закрыт, пока жив босс)
   const pt = ents.portal;
@@ -675,6 +846,52 @@ function updateSeekers() {
   }
 }
 
+// Дрейфер: ледяная медуза, ходит вверх-вниз по своему колену шахты
+function updateDrifters() {
+  for (const d of ents.drifters) {
+    if (!d.alive) continue;
+    d.t++;
+    d.y += d.dir * 0.5;
+    if (d.y <= d.minY) { d.y = d.minY; d.dir = 1; }
+    if (d.y >= d.maxY) { d.y = d.maxY; d.dir = -1; }
+  }
+}
+// Конькобежец: разгоняется по наледи, у стен и обрывов уходит в занос и разворачивается
+function updateSkaters() {
+  for (const k of ents.skaters) {
+    if (!k.alive) continue;
+    k.t++;
+    const nx = k.x + k.dir * 1.75;
+    const edge = k.dir > 0 ? nx + 15 : nx;
+    const c = Math.floor(edge / T), r = Math.floor((k.y + 8) / T);
+    if (isSolid(c, r) || !isSolid(c, r + 1)) {
+      k.dir *= -1;
+      if (onScreen(k.x, k.y)) {
+        snd('skid', k.x);
+        spawnParticles(k.x + 8, k.y + 11, 5, ['#f0ffff', '#a5d8e2'], 1.8, 0.08, 16);
+      }
+    } else {
+      k.x = nx;
+      if (k.t % 5 === 0 && onScreen(k.x, k.y))
+        spawnParticles(k.x + 8 - k.dir * 8, k.y + 11, 1, ['#a5d8e2'], 0.9, 0.05, 12);
+    }
+  }
+}
+// Выль: висит на потолке и роняет криобомбу, когда под ней проходят. Сбить нечем.
+function updateHowlers() {
+  for (const h of ents.howlers) {
+    if (h.t < 0) { h.t++; continue; }
+    if (!onScreen(h.x, h.y) || state !== 'play' ||
+        !(P.y > h.y && P.x + P.w > h.x - 6 && P.x < h.x + T + 6)) { h.t = 0; continue; }
+    if (++h.t < 40) continue;
+    shots.push({ x: h.x + 8, y: h.y + 16, vx: 0, vy: 0.9, g: 0.12, r: 3, life: 320,
+                 cols: ['#09202f', '#7fe9f5', '#eaffff'] });
+    snd('drop', h.x); h.t = -80;
+    spawnParticles(h.x + 8, h.y + 16, 5, ['#7fe9f5', '#eaffff'], 1.2, 0.05, 14);
+  }
+}
+const howlerCharging = h => h.t >= 18;
+
 function updateTurrets() {
   for (const t of ents.turrets) {
     if (!t.alive) continue;
@@ -718,6 +935,10 @@ function bossHazards(hit) {
   }
   for (const s of shots) if (overlap(hit, { x: s.x - s.r, y: s.y - s.r, w: s.r * 2, h: s.r * 2 })) die();
   for (const w of waves) if (overlap(hit, { x: w.x - 4, y: ARENA.floorY - 7, w: 8, h: 7 })) die();
+  if (b.kind === 'hoarfrost' && bossActive()) {                     // взвесь и столб стужи
+    if (P.y + P.h > b.flood + 3) die();
+    if (b.state === 'erupt' && overlap(hit, hoarJet())) die();
+  }
   if (b.kind === 'sovereign' && b.orb) {                            // осколок: сверху — отбить, сбоку — отброс
     const o = b.orb;
     if (o.mode !== 'back' && overlap(hit, { x: o.x - 6, y: o.y - 6, w: 12, h: 12 })) {
@@ -736,13 +957,14 @@ function hitBoss(bounce = true) {
   const b = boss;
   b.hp--; b.flash = 14; shake = 6; SFX.play('bossHit');
   if (bounce) { P.vy = -5; P.jumping = false; }        // корону бьёт её же осколок — игрока не подбрасывает
+  if (b.kind === 'hoarfrost') b.flood = Math.min(ARENA.floorY, b.flood + FLOOD.drain); // взвесь отступает
   spawnParticles(b.x + bossDef().w / 2, b.y + 4, 24, ['#4dff88', '#e6ecff', '#ffe14a'], 3, 0.1, 30);
   if (b.hp <= 0) { b.state = 'dying'; b.timer = 120; shots = []; waves = []; b.orb = null; }
   else { b.state = 'recoil'; b.timer = 45; }
 }
 function bossDeath() {
   const b = boss, d = bossDef();
-  b.state = 'dead'; shake = 14;
+  b.state = 'dead'; shake = 14; b.flood = ARENA.floorY;   // взвесь уходит — к порталу снова можно пройти
   SFX.stopLoops(); SFX.play('bossDie'); SFX.music(null); SFX.music(TRACKS[levelIdx], 2.8);
   spawnParticles(b.x + d.w / 2, b.y + d.h / 2, 90, ['#ff3b3b', '#ff9a2e', '#ffe14a', '#e6ecff', '#22e5ff'], 5, 0.08, 60);
   spawnParticles(ents.portal.x + 16, ents.portal.y + 16, 30, ['#22e5ff', '#3b5bff', '#e6ecff'], 2, 0.01, 40);
@@ -763,7 +985,8 @@ function updateBoss() {
     if (--b.timer <= 0) bossDeath();
   } else if (b.kind === 'warden') updateWarden();
   else if (b.kind === 'rootmind') updateRootmind();
-  else updateSovereign();
+  else if (b.kind === 'sovereign') updateSovereign();
+  else updateHoarfrost();
   updateShots();
   for (const w of waves) { w.x += w.dir * 2.4; w.t++; }
   waves = waves.filter(w => w.x > ARENA.left + 18 && w.x < (LW - 6) * T - 4);
@@ -1131,6 +1354,87 @@ function updateSovereign() {
 }
 
 
+// ---------- босс 4: HOARFROST (GLACIAL DESCENT) ----------
+//  Этот бой идёт не вдоль арены, а вверх по ней. Колосс стоит в криовзвеси,
+//  и взвесь всё время прибывает: нижние карнизы уходят под лёд, игрок лезет выше,
+//  а колосс поднимается вместе с ней и остаётся в досягаемости.
+//  Топтать броню нельзя. Он наводится на колонну, в которой стоит игрок, и бьёт
+//  вверх столбом стужи до самого потолка — уйти можно только вбок. После столба
+//  он выдыхается и раскрывает корону: вот тогда на макушку и надо спрыгнуть.
+//  Каждое деление сбрасывает взвесь на три тайла — воздух выигрывается попаданиями.
+const HOAR = { swim: 200, aim: 54, erupt: 66, spent: 155, jetW: 30 };
+const hoarTop = () => boss.flood - BOSS_BOX.hoarfrost.h + 14;    // по пояс во взвеси
+const hoarJet = () => ({ x: boss.jetX - HOAR.jetW / 2, y: ARENA.top,
+                         w: HOAR.jetW, h: Math.max(0, boss.flood - ARENA.top) });
+
+function fireHail() {                                 // веер ледяных осколков в игрока
+  const b = boss, sx = b.x + 24, sy = b.y + 12;
+  const base = Math.atan2(P.y + P.h / 2 - sy, P.x + P.w / 2 - sx);
+  for (const off of [-0.26, 0, 0.26]) {
+    const spd = 2.6 + bossRage() * 0.14;
+    shots.push({ x: sx, y: sy, vx: Math.cos(base + off) * spd, vy: Math.sin(base + off) * spd,
+                 g: 0.05, r: 3, life: 300, cols: ['#09202f', '#7fe9f5', '#eaffff'] });
+  }
+  snd('hail', sx);
+  spawnParticles(sx, sy, 6, ['#7fe9f5', '#eaffff'], 1.6, 0, 14);
+}
+function hoarShardFall() {                            // сосульки с потолка арены, вразнобой
+  const x = ARENA.left + 28 + Math.random() * (LEVEL_W - 56 - ARENA.left);
+  shots.push({ x, y: ARENA.top + 10, vx: 0, vy: 1.2, g: 0.11, r: 3, life: 320,
+               cols: ['#09202f', '#7fe9f5', '#eaffff'] });
+  snd('drop', x);
+}
+
+function updateHoarfrost() {
+  const b = boss, rage = bossRage();
+  const floodTop = ARENA.top + 5 * T;                  // выше взвесь не поднимается — воздух остаётся всегда
+  if (bossActive() && b.state !== 'dying') b.flood = Math.max(floodTop, b.flood - FLOOD.rise);
+  switch (b.state) {
+    case 'idle':
+      if (state === 'play' && P.y >= ARENA.trigger) { bossAwake(); b.timer = 110; }
+      break;
+    case 'wake':
+      b.y += clamp(hoarTop() - b.y, -1.4, 1.4);
+      if (b.timer % 9 === 0) spawnParticles(b.x + 24, b.flood, 8, ['#7fe9f5', '#eaffff'], 2.6, 0.04, 26);
+      if (--b.timer <= 0) { b.state = 'swim'; b.timer = HOAR.swim; b.boltT = 60; }
+      break;
+    case 'swim': {                                     // бродит по взвеси и кидает осколки
+      const tx = clamp(P.x + P.w / 2 - 24, ARENA.xMin, ARENA.xMax);
+      b.x += clamp((tx - b.x) * 0.03, -0.6, 0.6);
+      b.y = hoarTop() + Math.sin(b.t / 20) * 2;
+      if (--b.boltT <= 0) { fireHail(); b.boltT = 92 - rage * 10; }
+      if (rage >= 2 && b.t % (150 - rage * 14) === 0) hoarShardFall();
+      if (--b.timer <= 0) { b.state = 'aim'; b.timer = HOAR.aim - rage * 3; snd('tell', b.x); }
+      break;
+    }
+    case 'aim':                                        // наводится на колонну, где стоит игрок
+      b.y = hoarTop() + (frame % 2);
+      b.jetX = clamp(P.x + P.w / 2, ARENA.left + 26, LEVEL_W - 26);
+      if (b.timer % 6 === 0)
+        spawnParticles(b.jetX, b.flood - 4, 4, ['#7fe9f5', '#eaffff'], 2, -0.06, 20);
+      if (--b.timer <= 0) { b.state = 'erupt'; b.timer = HOAR.erupt + rage * 6; snd('jet', b.jetX); shake = 6; }
+      break;
+    case 'erupt':                                      // столб стужи до самого потолка
+      b.y = hoarTop();
+      if (frame % 3 === 0)
+        spawnParticles(b.jetX + (Math.random() - 0.5) * HOAR.jetW,
+                       ARENA.top + Math.random() * Math.max(1, b.flood - ARENA.top),
+                       2, ['#eaffff', '#7fe9f5'], 1.4, -0.08, 22);
+      if (--b.timer <= 0) { b.state = 'spent'; b.timer = HOAR.spent - rage * 14; SFX.play('bossOpen'); }
+      break;
+    case 'spent':                                      // выдохся: корона раскрыта, ядро можно топтать
+      b.y = hoarTop() + Math.sin(b.t / 9) * 1.2;
+      if (b.t % 12 === 0) spawnParticles(b.x + 24, b.y + 2, 4, ['#9bf0ff', '#f0ffff'], 1.8, -0.03, 22);
+      if (--b.timer <= 0) { b.state = 'swim'; b.timer = HOAR.swim - rage * 16; b.boltT = 70; }
+      break;
+    case 'recoil':                                     // деление сбито: взвесь ушла вниз, он оседает
+      b.y += clamp(hoarTop() - b.y, -2.2, 2.2);
+      if (b.timer % 7 === 0) spawnParticles(b.x + 24, b.y + 16, 6, ['#7fe9f5', '#eaffff', '#ff6b9d'], 2.6, 0.05, 24);
+      if (--b.timer <= 0) { b.state = 'swim'; b.timer = HOAR.swim - rage * 16; b.boltT = 55; }
+      break;
+  }
+}
+
 // ---------- главный такт ----------
 function update() {
   frame++;
@@ -1140,10 +1444,15 @@ function update() {
   updateTurrets();
   updateLeapers();
   updateSeekers();
+  updateDrifters();
+  updateSkaters();
+  updateHowlers();
   updateCrumbles();
   updatePresses();
   updateSaws();
   updateGates();
+  updateGusts();
+  updateIcicles();
   updateBoss();
   updateParticles();
   if (state === 'play') { elapsed++; if (intro > 0) intro--; updatePlayer(); }
@@ -1166,28 +1475,39 @@ function update() {
         ents.phases.some(q => onScreen(q.x))) SFX.play('phase');
     lastPhase = ps;
   }
-  // непрерывные источники: поток вентилятора и луч SOVEREIGN
+  // непрерывные источники: поток вентилятора, луч SOVEREIGN, пурга и столб HOARFROST
   SFX.loop('vent', state === 'play' && P.lift > 0);
   const orb = boss.kind === 'sovereign' ? boss.orb : null;
   SFX.loop('tether', state === 'play' && !!orb && orb.mode !== 'back', { pan: panOf(orb ? orb.x : 0) });
+  SFX.loop('blow', state === 'play' && ents.gusts.some(q => q.w && gustStage(q) === 2 && onScreen(q.x, q.y)));
+  SFX.loop('jet', state === 'play' && boss.kind === 'hoarfrost' && boss.state === 'erupt',
+           { pan: panOf(boss.jetX) });
   if (pressed.KeyC) { const s = document.getElementById('scan'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
-  // камера
-  const target = bossActive() ? LEVEL_W - W : P.x + P.w / 2 - W / 2 + P.face * 24; // на арене камера заперта
-  cam.x += (target - cam.x) * 0.08;
+  // камера: по горизонтали смотрит вперёд по бегу, по вертикали — вслед за падением
+  const tx = bossActive() && !ARENA.vert ? LEVEL_W - W : P.x + P.w / 2 - W / 2 + (VERT ? 0 : P.face * 24);
+  cam.x += (tx - cam.x) * 0.08;
   cam.x = clamp(cam.x, 0, LEVEL_W - W);
+  if (LEVEL_H > H) {
+    const ty = P.y + P.h / 2 - H / 2 + clamp(P.vy * 9, -28, 46);
+    cam.y += (ty - cam.y) * 0.1;
+    cam.y = clamp(cam.y, bossActive() && ARENA.vert ? ARENA.top : 0, LEVEL_H - H);
+  } else cam.y = 0;
   if (shake > 0) shake--;
   for (const k in pressed) pressed[k] = false;
 }
 
 // ---------- отрисовка ----------
+// слои фона повторяются по обеим осям: у вертикального уровня они стыкуются и по высоте
 function drawParallax(img, factor) {
-  const w = img.width;
-  const off = -((cam.x * factor) % w);
-  for (let x = off; x < W; x += w) ctx.drawImage(img, Math.round(x), 0);
+  const w = img.width, h = img.height;
+  const ox = -((cam.x * factor) % w), oy = -(((cam.y * factor) % h + h) % h);
+  for (let y = oy; y < H; y += h)
+    for (let x = ox; x < W; x += w) ctx.drawImage(img, Math.round(x), Math.round(y));
 }
 
 function draw() {
   const cx = Math.round(cam.x) + (shake > 0 ? Math.round((Math.random() - 0.5) * shake) : 0);
+  const cy = Math.round(cam.y);
   const sy = shake > 0 ? Math.round((Math.random() - 0.5) * shake * 0.5) : 0;
   ctx.setTransform(1, 0, 0, 1, 0, sy);
 
@@ -1196,11 +1516,11 @@ function draw() {
   drawParallax(TH.bg.mid, 0.25);
   drawParallax(TH.bg.near, 0.5);
 
-  ctx.translate(-cx, 0);
+  ctx.translate(-cx, -cy);
 
   // анимированный декор (за уровнем — светильники/консоли/кристаллы)
   for (const a of ents.anim) {
-    if (a.x + T < cx || a.x > cx + W) continue;
+    if (!onScreen(a.x, a.y)) continue;
     if (a.kind === 'wallLight') ctx.drawImage(TL.wallLight[Math.floor((frame + a.x) / 40) % 2], a.x, a.y);
     else if (a.kind === 'console') ctx.drawImage(TL.console[Math.floor((frame + a.x) / 20) % 2], a.x, a.y);
     else if (a.kind === 'crystal') ctx.drawImage(TL.crystal[Math.floor((frame + a.x) / 30) % 2], a.x, a.y);
@@ -1214,36 +1534,41 @@ function draw() {
     if (locked && Math.floor(frame / 20) % 2) { ctx.fillStyle = '#ff3b3b'; ctx.fillRect(ents.portal.x + 14, ents.portal.y + 14, 4, 4); }
   }
 
-  // разлом пустоты (под тайлами: грунт перекрывает его кромку)
+  // разлом пустоты и криовзвесь (под тайлами: грунт перекрывает их кромку)
   for (const r of ents.rifts) {
-    if (!onScreen(r.x)) continue;
+    if (!onScreen(r.x, r.y)) continue;
     ctx.drawImage(r.top ? A.rift.top[Math.floor((frame + r.x / 8) / 9) % 3]
                         : A.rift.body[Math.floor((frame + r.y) / 14) % 2], r.x, r.y);
   }
+  for (const r of ents.cryos) {
+    if (!onScreen(r.x, r.y)) continue;
+    ctx.drawImage(r.top ? A.cryo.top[Math.floor((frame + r.x / 8) / 10) % 3]
+                        : A.cryo.body[Math.floor((frame + r.y) / 14) % 2], r.x, r.y);
+  }
 
   // тайлы
-  ctx.drawImage(levelCanvas, cx, 0, W, H, cx, 0, W, H);
+  ctx.drawImage(levelCanvas, cx, cy, W, H, cx, cy, W, H);
 
   // конвейерные ленты и фазовые плиты
   for (const b of ents.belts) {
-    if (!onScreen(b.x)) continue;
+    if (!onScreen(b.x, b.y)) continue;
     ctx.drawImage(TL.belt[b.dir > 0 ? 1 : 0][Math.floor(frame / 5) % 4], b.x, b.y);
   }
   for (const f of ents.phases) {
-    if (!onScreen(f.x)) continue;
+    if (!onScreen(f.x, f.y)) continue;
     const st = phaseStage(f.group);
     ctx.drawImage(TL.phase[f.group][st === 1 && frame % 8 < 4 ? 0 : st], f.x, f.y);
   }
 
   // расплав (анимированная поверхность)
-  for (const m of ents.melt) if (m.top && onScreen(m.x))
+  for (const m of ents.melt) if (m.top && onScreen(m.x, m.y))
     ctx.drawImage(TL.meltTop[Math.floor((frame + m.x / 8) / 12) % 2], m.x, m.y);
 
   // шипы, пружины, вентиляторы, осыпающиеся плиты
-  for (const a of ents.anim) if (a.kind === 'spikes' && onScreen(a.x)) ctx.drawImage(TL.spikes[Math.floor((frame + a.x / 4) / 10) % 2], a.x, a.y);
+  for (const a of ents.anim) if (a.kind === 'spikes' && onScreen(a.x, a.y)) ctx.drawImage(TL.spikes[Math.floor((frame + a.x / 4) / 10) % 2], a.x, a.y);
   for (const s of ents.springs) ctx.drawImage(TL.spring[s.timer > 6 ? 1 : 0], s.x, s.y);
   for (const v of ents.vents) {
-    if (!onScreen(v.x)) continue;
+    if (!onScreen(v.x, v.y)) continue;
     ctx.drawImage(TL.vent[Math.floor(frame / 5) % 2], v.x, v.tileY);
     ctx.globalAlpha = 0.2; ctx.fillStyle = LV.fx.lift[0];
     ctx.fillRect(v.x + 2, v.y, 12, v.h);
@@ -1257,14 +1582,14 @@ function draw() {
     }
   }
   for (const c of ents.crumbles) {
-    if (c.st === 2 || !onScreen(c.x)) continue;
+    if (c.st === 2 || !onScreen(c.x, c.y)) continue;
     const sh = c.st === 1 ? ((frame % 4 < 2) ? 1 : -1) : 0;
     ctx.drawImage(TL.crumble[c.st === 0 ? 0 : (c.t < CRUMBLE.hold / 2 ? 2 : 1)], c.x + sh, c.y);
   }
 
   // прессы: штанга-шахта до перекрытия + голова
   for (const p of ents.presses) {
-    if (!onScreen(p.x)) continue;
+    if (!onScreen(p.x, p.y)) continue;
     for (let y = p.y - T; y >= p.y0; y -= T) ctx.drawImage(TL.shaft, p.x, y);
     const sh = p.st === 1 ? ((frame % 4 < 2) ? 1 : -1) : 0;
     ctx.drawImage(TL.press[p.st === 1 || p.st === 2 ? 1 : 0], p.x + sh, Math.round(p.y));
@@ -1275,10 +1600,38 @@ function draw() {
   }
   // пилы: рельса и диск
   for (const q of ents.saws) {
-    if (!onScreen(q.x)) continue;
+    if (!onScreen(q.x, q.y)) continue;
     ctx.fillStyle = '#3b2d44'; ctx.fillRect(q.minX + 8, q.y + 13, q.maxX - q.minX + 1, 2);
     ctx.fillStyle = '#6b5c74'; ctx.fillRect(q.minX + 8, q.y + 13, q.maxX - q.minX + 1, 1);
     ctx.drawImage(TH.saw[Math.floor(frame / 3) % 4], Math.round(q.x), q.y);
+  }
+
+  // сталактиты: висят, трещат, падают
+  for (const i of ents.icicles) {
+    if (i.st === 3 || !onScreen(i.x, i.y)) continue;
+    const sh = i.st === 1 && frame % 4 < 2 ? 1 : 0;
+    ctx.drawImage(TL.icicle[Math.min(2, i.st)], i.x + sh, Math.round(i.y));
+  }
+  // раструбы пурги: сам раструб и струи вдоль полосы
+  for (const q of ents.gusts) {
+    if (!onScreen(q.x, q.y)) continue;
+    const st = gustStage(q);
+    ctx.drawImage(TL.blower[q.dir > 0 ? 1 : 0][st], q.x, q.y);
+    if (!q.w || st === 0) continue;
+    if (st === 1) {                                     // предупреждение — пунктир вдоль полосы
+      if (frame % 6 < 3) {
+        ctx.fillStyle = '#ffd76b';
+        for (let x = q.tx + 2; x < q.tx + q.w; x += 8) ctx.fillRect(x, q.top + q.h / 2 - 1, 3, 2);
+      }
+      continue;
+    }
+    for (let i = 0; i < 16; i++) {                      // струи пурги
+      const off = (frame * 3.4 + i * 37) % q.w;
+      const x = q.dir > 0 ? q.tx + off : q.tx + q.w - off;
+      const y = q.top + 2 + ((i * 11 + Math.floor(frame / 4)) % Math.max(1, q.h - 4));
+      ctx.fillStyle = i % 3 ? '#a5d8e2' : '#f0ffff';
+      ctx.fillRect(Math.round(x), Math.round(y), 5, 1);
+    }
   }
 
   // движущиеся платформы
@@ -1309,9 +1662,21 @@ function draw() {
     ctx.drawImage(TH.seeker[Math.floor(k.t / 9) % 2][k.vx > 0 ? 0 : 1], Math.round(k.x), Math.round(k.y) + bob);
   }
 
+  for (const d of ents.drifters) if (d.alive && onScreen(d.x, d.y)) {
+    const sway = Math.round(Math.sin(d.t / 16) * 1.5);
+    ctx.drawImage(TH.drifter[Math.floor(d.t / 10) % 2][d.dir > 0 ? 0 : 1], Math.round(d.x) + sway, Math.round(d.y));
+  }
+  for (const k of ents.skaters) if (k.alive && onScreen(k.x, k.y))
+    ctx.drawImage(TH.skater[Math.floor(k.t / 6) % 2][k.dir > 0 ? 0 : 1], Math.round(k.x), Math.round(k.y));
+  for (const h of ents.howlers) {
+    if (!onScreen(h.x, h.y)) continue;
+    const sh = howlerCharging(h) && frame % 4 < 2 ? 1 : 0;
+    ctx.drawImage(TH.howler[howlerCharging(h) ? 1 : 0][0], h.x + sh, h.y);
+  }
+
   // лазерные затворы
   for (const g of ents.gates) {
-    if (!onScreen(g.x)) continue;
+    if (!onScreen(g.x, g.y)) continue;
     const st = gateStage(g);
     ctx.drawImage(TL.gate[st], g.x, g.y);
     if (st === 1 && frame % 6 < 3) {                    // предупреждение — пунктир
@@ -1351,12 +1716,53 @@ function draw() {
     for (const bx of [c.x, c.x + c.w - 6]) ctx.fillRect(bx, fy - 3, 6, 2);
   }
 
-  // энергобарьер арены
+  // криовзвесь, которую гонит вверх HOARFROST, и его столб стужи
+  if (boss.kind === 'hoarfrost' && bossActive() && boss.flood < ARENA.floorY) {
+    const fy = Math.round(boss.flood);
+    ctx.fillStyle = '#09202f';
+    ctx.fillRect(ARENA.left, fy + T, LEVEL_W - ARENA.left, ARENA.floorY - fy);
+    for (let x = ARENA.left; x < LEVEL_W; x += T)
+      ctx.drawImage(A.cryo.top[Math.floor((frame + x / 8) / 10) % 3], x, fy);
+    for (let i = 0; i < 12; i++) {                      // искры в толще
+      const x = ARENA.left + (i * 53 + frame * 2) % (LEVEL_W - ARENA.left);
+      const y = fy + 20 + ((i * 37 + frame) % Math.max(1, ARENA.floorY - fy));
+      ctx.fillStyle = i % 3 ? '#1d6f88' : '#7fe9f5';
+      ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+    }
+  }
+  if (boss.kind === 'hoarfrost' && (boss.state === 'aim' || boss.state === 'erupt')) {
+    const j = hoarJet();
+    if (boss.state === 'aim') {                         // разметка колонны — телеграф
+      if (frame % 6 < 3) {
+        ctx.fillStyle = '#ffd76b';
+        for (let y = j.y; y < j.y + j.h; y += 8) { ctx.fillRect(j.x, y, 2, 4); ctx.fillRect(j.x + j.w - 2, y, 2, 4); }
+      }
+    } else {
+      ctx.fillStyle = '#1d6f88'; ctx.fillRect(j.x, j.y, j.w, j.h);
+      ctx.fillStyle = '#7fe9f5'; ctx.fillRect(j.x + 4, j.y, j.w - 8, j.h);
+      ctx.fillStyle = frame % 4 < 2 ? '#eaffff' : '#f0ffff'; ctx.fillRect(j.x + 11, j.y, 8, j.h);
+      for (let i = 0; i < 12; i++) {                    // иглы стужи летят вверх
+        const y = j.y + j.h - ((frame * 5 + i * 31) % Math.max(1, j.h));
+        ctx.fillStyle = '#eaffff';
+        ctx.fillRect(j.x + 3 + ((i * 7) % (j.w - 6)), Math.round(y), 2, 5);
+      }
+    }
+  }
+
+  // энергобарьер арены: у вертикальной шахты он не сбоку, а над головой
   if (bossActive()) {
-    const bx = ARENA.left + 14;
-    for (let y = 0; y < ARENA.floorY; y += 4) {
-      if ((y / 4 + Math.floor(frame / 3)) % 3 === 0) continue;
-      ctx.fillStyle = (y / 4 + frame) % 7 === 0 ? '#e6ecff' : LV.accent2; ctx.fillRect(bx, y, 2, 3);
+    if (ARENA.vert) {
+      const by = ARENA.top + 12;
+      for (let x = ARENA.left; x < LEVEL_W; x += 4) {
+        if ((x / 4 + Math.floor(frame / 3)) % 3 === 0) continue;
+        ctx.fillStyle = (x / 4 + frame) % 7 === 0 ? '#e6ecff' : LV.accent2; ctx.fillRect(x, by, 3, 2);
+      }
+    } else {
+      const bx = ARENA.left + 14;
+      for (let y = 0; y < ARENA.floorY; y += 4) {
+        if ((y / 4 + Math.floor(frame / 3)) % 3 === 0) continue;
+        ctx.fillStyle = (y / 4 + frame) % 7 === 0 ? '#e6ecff' : LV.accent2; ctx.fillRect(bx, y, 2, 3);
+      }
     }
   }
   drawBoss();
@@ -1401,7 +1807,8 @@ function draw() {
 function drawBoss() {
   const b = boss, d = bossDef();
   if (b.state === 'dead') return;
-  const img = b.kind === 'warden' ? wardenFrame() : b.kind === 'rootmind' ? rootmindFrame() : sovereignFrame();
+  const img = b.kind === 'warden' ? wardenFrame() : b.kind === 'rootmind' ? rootmindFrame()
+            : b.kind === 'sovereign' ? sovereignFrame() : hoarfrostFrame();
   const bx = Math.round(b.x), by = Math.round(b.y);
   // шаг сквозь пространство: растворился — проявился на новом месте
   if (b.state === d.ghost) ctx.globalAlpha = b.timer > 20 ? (b.timer - 20) / 20 : 1 - b.timer / 20;
@@ -1508,6 +1915,21 @@ function sovereignFrame() {
   }
 }
 
+function hoarfrostFrame() {
+  const b = boss, S = A.boss4, sp = Math.floor(b.t / 7) % 4;
+  if (b.flash > 0 && b.flash % 4 < 2) return S.flash;
+  switch (b.state) {
+    case 'idle': return S.dormant[0];
+    case 'wake': return (b.t % 12 < 6 ? S.dormant : S.live)[sp];
+    case 'aim': return S.tell[sp];
+    case 'erupt': return S.hot[sp];
+    case 'spent': return S.open[sp];
+    case 'recoil': return S.dormant[sp];
+    case 'dying': return S.open[sp];
+    default: return S.live[sp];                 // swim
+  }
+}
+
 // ---------- HUD ----------
 function drawHud() {
   const got = ents.cells.filter(c => c.taken).length;
@@ -1517,8 +1939,9 @@ function drawHud() {
   ctx.drawImage(A.cell[0], 4, 1);
   textShadow(`${got}/${totalCells}`, 15, 3, '#4dff88');
   textShadow(`TIME ${clock(secs)}`, 84, 3, '#aab4d4');
-  const screen = Math.floor((P.x + P.w / 2) / W) + 1;
-  textShadow(`AREA ${screen}/${Math.ceil(LEVEL_W / W)}`, 170, 3, '#22e5ff');
+  const screen = VERT ? Math.floor((P.y + P.h / 2) / H) + 1 : Math.floor((P.x + P.w / 2) / W) + 1;
+  const screens = VERT ? Math.ceil(LEVEL_H / H) : Math.ceil(LEVEL_W / W);
+  textShadow(`AREA ${screen}/${screens}`, 170, 3, '#22e5ff');
   textShadow(LV.short, W - 4 - LV.short.length * 4, 3, LV.accent);
 
   if (bossActive()) {
@@ -1580,6 +2003,9 @@ window.__dbg = () => ({ level: levelIdx + 1, x: P.x, y: P.y, vx: P.vx, vy: P.vy,
   cells: ents.cells.filter(c => c.taken).length, drones: ents.drones.filter(d => d.alive).length,
   crawlers: ents.crawlers.filter(c => c.alive).length, turrets: ents.turrets.filter(t => t.alive).length,
   crumbles: ents.crumbles.map(c => c.st), frame, jumping: P.jumping, coyote: P.coyote, jbuf: P.jbuf,
+  cam: { x: Math.round(cam.x), y: Math.round(cam.y) }, wall: P.wall, gust: P.gust, ice: P.grounded && onIce(),
+  icicles: ents.icicles.map(i => i.st), drifters: ents.drifters.filter(d => d.alive).length,
+  skaters: ents.skaters.filter(k => k.alive).length, flood: Math.round(boss.flood || 0),
   leapers: ents.leapers.filter(l => l.alive).length, seekers: ents.seekers.filter(k => k.alive).length,
   presses: ents.presses.map(p => p.st), phase: [phaseStage(0), phaseStage(1)],
   mov: ents.movers.map(m => [Math.round(m.x), Math.round(m.y)]) });
