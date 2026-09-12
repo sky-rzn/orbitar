@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const { makeCanvas, png, zoom } = require('./pixcanvas');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['js/audio.js', 'js/assets.js', 'js/level.js', 'js/level2.js',
+const FILES = ['js/audio.js', 'js/save.js', 'js/assets.js', 'js/level.js', 'js/level2.js',
                'js/level3.js', 'js/level4.js', 'js/level5.js', 'js/game.js'];
 
 function boot(hash) {
@@ -21,7 +21,10 @@ function boot(hash) {
     addEventListener: (t, f) => { (listeners[t] = listeners[t] || []).push(f); },
     requestAnimationFrame: cb => { rafCb = cb; return 1; },
     location: { hash },
-    localStorage: { getItem: () => null, setItem: () => {} },
+    localStorage: (() => {
+      const store = {};
+      return { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } };
+    })(),
   };
   win.window = win;
   win.performance = { now: () => nowMs };

@@ -10,6 +10,7 @@ const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const A = buildAssets();
 const LEVELS = [LEVEL1, LEVEL2, LEVEL3, LEVEL4, LEVEL5];
+const LEVEL_CELLS = LEVELS.map(l => l.map.join('').split('*').length - 1);
 
 // ---------- масштабирование под окно (целочисленное) ----------
 function fit() {
@@ -17,6 +18,16 @@ function fit() {
   canvas.style.width = W * s + 'px'; canvas.style.height = H * s + 'px';
 }
 window.addEventListener('resize', fit); fit();
+
+// ---------- scanlines (настройка живёт в сохранении) ----------
+const scanEl = document.getElementById('scan');
+let scanlines = !!SAVE.get('scanlines');
+const applyScan = () => { scanEl.style.display = scanlines ? 'block' : 'none'; };
+function toggleScan() {
+  scanlines = !scanlines; applyScan(); SAVE.set('scanlines', scanlines);
+  toast(scanlines ? 'SCANLINES ON' : 'SCANLINES OFF');
+}
+applyScan();
 
 // ---------- ввод ----------
 const keys = {}, pressed = {};
@@ -51,6 +62,8 @@ const inp = {
   jump: () => keys.KeyZ || keys.Space || keys.ArrowUp || keys.KeyW,
   jumpPressed: () => pressed.KeyZ || pressed.Space || pressed.ArrowUp || pressed.KeyW,
   downPressed: () => pressed.ArrowDown || pressed.KeyS,
+  upPressed: () => pressed.ArrowUp || pressed.KeyW,
+  selectPressed: () => pressed.Space || pressed.KeyZ || pressed.Enter,
 };
 
 // ---------- битмап-шрифт 3x5 ----------
@@ -412,8 +425,9 @@ function reset(full) {
 
 // ---------- состояние ----------
 let P, cam, particles, frame = 0, state, deadTimer, cp, intro, elapsed, shake;
+let record = false;     // на экране CLEAR — отметка о новом рекорде
 
-function startLevel(idx) { loadLevel(idx); reset(true); }
+function startLevel(idx) { loadLevel(idx); reset(true); record = false; }
 function restartRun() { cellsBank = 0; runTime = 0; startLevel(0); }   // с финального экрана — сначала
 function nextLevel() {
   SFX.play('select');
@@ -422,6 +436,36 @@ function nextLevel() {
   startLevel(levelIdx + 1);
 }
 function camSnap() { cam.x = clamp(P.x - W / 2, 0, LEVEL_W - W); cam.y = clamp(P.y - H / 2, 0, LEVEL_H - H); }
+
+// ---------- окно выбора уровня ----------
+// Пауза с картой миссии: пройденные сектора можно переиграть, закрытые — только
+// открыть прохождением предыдущего. Переключатели звука и картинки работают и здесь.
+const menu = { open: false, sel: 0, t: 0 };
+function openMenu() {
+  menu.open = true; menu.sel = levelIdx; menu.t = 0; shake = 0;
+  SFX.stopLoops();
+  SFX.play('select');
+}
+function closeMenu() { menu.open = false; SFX.play('select'); }
+function pickLevel(idx) {
+  if (!SAVE.unlocked(idx)) { SFX.play('clank'); return; }
+  menu.open = false;
+  cellsBank = 0; runTime = 0;              // забег считается от выбранного сектора
+  startLevel(idx);
+  SFX.play('checkpoint');
+}
+function updateMenu() {
+  menu.t++;
+  if (inp.upPressed()) { menu.sel = (menu.sel + LEVELS.length - 1) % LEVELS.length; SFX.play('toggle'); }
+  if (inp.downPressed()) { menu.sel = (menu.sel + 1) % LEVELS.length; SFX.play('toggle'); }
+  if (inp.selectPressed()) pickLevel(menu.sel);
+  else if (pressed.Escape) closeMenu();
+  if (pressed.KeyV) toast(SFX.toggleSound() ? 'SOUND ON' : 'SOUND OFF');
+  if (pressed.KeyM) toast(SFX.toggleMusic() ? 'MUSIC ON' : 'MUSIC OFF');
+  if (pressed.KeyL) toggleScan();
+  if (toastT > 0) toastT--;
+}
+
 function cheatWarp(lv, toBoss) {
   if (lv !== levelIdx || !toBoss) {                  // прыжок на другой уровень (и любой LVL) — уровень с нуля
     if (lv === 0) { cellsBank = 0; runTime = 0; }    // с первого уровня забег начинается заново
@@ -915,6 +959,7 @@ function updatePlayer() {
   const pt = ents.portal;
   if (pt && boss.state === 'dead' && overlap(P, { x: pt.x + 6, y: pt.y + 2, w: 20, h: 28 })) {
     state = levelIdx < LEVELS.length - 1 ? 'clear' : 'win';
+    record = SAVE.clearLevel(levelIdx, ents.cells.filter(c => c.taken).length, elapsed);
     SFX.stopLoops(); SFX.music(null); SFX.play(state);
   }
 
@@ -1808,6 +1853,8 @@ function updatePulsar() {
 
 // ---------- главный такт ----------
 function update() {
+  if (menu.open) { updateMenu(); for (const k in pressed) pressed[k] = false; return; }
+  if (pressed.Escape) { openMenu(); for (const k in pressed) pressed[k] = false; return; }
   frame++;
   updateMovers();
   updateDrones();
@@ -1857,7 +1904,7 @@ function update() {
   SFX.loop('jet', state === 'play' && ((boss.kind === 'hoarfrost' && boss.state === 'erupt') ||
            (boss.kind === 'pulsar' && boss.state === 'beam')),
            { pan: panOf(boss.kind === 'pulsar' ? boss.x + 20 : boss.jetX) });
-  if (pressed.KeyL) { const s = document.getElementById('scan'); s.style.display = s.style.display === 'block' ? 'none' : 'block'; }
+  if (pressed.KeyL) toggleScan();
   // камера: по горизонтали смотрит вперёд по бегу, по вертикали — вслед за падением
   const tx = bossActive() && !ARENA.vert ? LEVEL_W - W : P.x + P.w / 2 - W / 2 + (VERT ? 0 : P.face * 24);
   cam.x += (tx - cam.x) * 0.08;
@@ -2283,7 +2330,7 @@ function draw() {
   for (const p of particles) { ctx.fillStyle = p.col; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.life > 10 ? 2 : 1, p.life > 10 ? 2 : 1); }
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  drawHud();
+  if (menu.open) drawMenu(); else drawHud();
 }
 
 function drawBoss() {
@@ -2429,6 +2476,54 @@ function pulsarFrame() {
 }
 
 // ---------- HUD ----------
+function drawToast() {
+  if (toastT <= 0) return;
+  ctx.globalAlpha = Math.min(1, toastT / 30);
+  ctx.fillStyle = 'rgba(11,11,26,0.7)'; ctx.fillRect(W / 2 - 44, 36, 88, 13);
+  textShadow(toastText, mid(toastText), 40, '#ffe14a');
+  ctx.globalAlpha = 1;
+}
+
+const clockOf = f => {                       // кадры → MM:SS
+  const t = Math.floor(f / 60);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
+// ---------- окно выбора уровня ----------
+function drawMenu() {
+  ctx.fillStyle = 'rgba(7,7,15,0.93)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(13,16,33,0.9)'; ctx.fillRect(8, 38, W - 16, 146);
+  ctx.fillStyle = '#1e2947'; ctx.fillRect(8, 38, W - 16, 1); ctx.fillRect(8, 183, W - 16, 1);
+  textShadow('SELECT AREA', mid('SELECT AREA', 2), 10, '#22e5ff', 2);
+  const done = `CLEARED ${SAVE.count()}/${LEVELS.length}`;
+  textShadow(done, mid(done), 28, '#8fa3c7');
+
+  for (let i = 0; i < LEVELS.length; i++) {
+    const y = 46 + i * 27, L = LEVELS[i], open = SAVE.unlocked(i), b = SAVE.best(i);
+    const col = open ? L.accent : '#3d4668';
+    if (i === menu.sel) {
+      ctx.fillStyle = 'rgba(34,229,255,0.12)'; ctx.fillRect(14, y - 5, 292, 25);
+      ctx.fillStyle = col; ctx.fillRect(14, y - 5, 2, 25);
+      if (Math.floor(menu.t / 16) % 2) ctx.fillRect(6, y + 2, 5, 5);
+    }
+    textShadow(String(i + 1), 22, y, col);
+    textShadow(L.name, 34, y, col);
+    const mark = !open ? 'LOCKED' : SAVE.cleared(i) ? 'CLEAR' : 'NEW';
+    textShadow(mark, W - 18 - mark.length * 4, y, !open ? '#3d4668' : SAVE.cleared(i) ? '#4dff88' : '#ffe14a');
+    const line = !open ? `FINISH AREA ${i} TO OPEN`
+      : b ? `CELLS ${b.cells}/${LEVEL_CELLS[i]}   TIME ${clockOf(b.time)}`
+          : `CELLS 0/${LEVEL_CELLS[i]}   NO RECORD`;
+    textShadow(line, 34, y + 11, open ? '#8fa3c7' : '#5a6690');
+  }
+
+  const sw = v => (v ? 'ON' : 'OFF');
+  const set = `V SOUND ${sw(SFX.on)}   M MUSIC ${sw(SFX.musicOn)}   L SCAN ${sw(scanlines)}`;
+  textShadow(set, mid(set), 190, '#aab4d4');
+  const hint = 'UP/DOWN - CHOOSE   Z - START   ESC - RESUME';
+  textShadow(hint, mid(hint), 204, '#5a6690');
+  drawToast();
+}
+
 function drawHud() {
   const got = ents.cells.filter(c => c.taken).length;
   const secs = Math.floor(elapsed / 60);
@@ -2458,12 +2553,7 @@ function drawHud() {
     textShadow(`CHEAT: ${cheatText}`, mid(`CHEAT: ${cheatText}`), 24, '#ff3fa8');
     ctx.globalAlpha = 1;
   }
-  if (toastT > 0) {
-    ctx.globalAlpha = Math.min(1, toastT / 30);
-    ctx.fillStyle = 'rgba(11,11,26,0.7)'; ctx.fillRect(W / 2 - 44, 36, 88, 13);
-    textShadow(toastText, mid(toastText), 40, '#ffe14a');
-    ctx.globalAlpha = 1;
-  }
+  drawToast();
   if (intro > 0 && state === 'play') {
     ctx.globalAlpha = Math.min(1, intro / 40);
     ctx.fillStyle = 'rgba(11,11,26,0.7)'; ctx.fillRect(0, 88, W, 44);
@@ -2472,28 +2562,32 @@ function drawHud() {
     ctx.globalAlpha = 1;
   }
   if (state === 'clear') {
-    ctx.fillStyle = 'rgba(11,11,26,0.78)'; ctx.fillRect(0, 76, W, 72);
-    textShadow('LEVEL CLEAR!', mid('LEVEL CLEAR!', 2), 84, '#ffe14a', 2);
+    ctx.fillStyle = 'rgba(11,11,26,0.78)'; ctx.fillRect(0, 72, W, 82);
+    textShadow('LEVEL CLEAR!', mid('LEVEL CLEAR!', 2), 78, '#ffe14a', 2);
+    if (record && Math.floor(frame / 20) % 2) textShadow('NEW RECORD!', mid('NEW RECORD!'), 94, '#ff3fa8');
     const line = `CELLS ${got}/${totalCells}   TIME ${clock(secs)}`;
     textShadow(line, mid(line), 106, '#e6ecff');
     const nx = `NEXT - ${LEVELS[levelIdx + 1].name}`;
     textShadow(nx, mid(nx), 120, LEVELS[levelIdx + 1].accent);
     if (Math.floor(frame / 30) % 2) textShadow('PRESS Z TO CONTINUE', mid('PRESS Z TO CONTINUE'), 134, '#22e5ff');
+    textShadow('ESC - SELECT AREA', mid('ESC - SELECT AREA'), 146, '#5a6690');
   }
   if (state === 'win') {
-    const total = cellsBank + got, allCells = LEVELS.reduce((s, l) => s + (l.map.join('').split('*').length - 1), 0);
+    const total = cellsBank + got, allCells = LEVEL_CELLS.reduce((a, n) => a + n, 0);
     const t = Math.floor((runTime + elapsed) / 60);
-    ctx.fillStyle = 'rgba(11,11,26,0.8)'; ctx.fillRect(0, 76, W, 72);
-    textShadow('MISSION COMPLETE', mid('MISSION COMPLETE', 2), 84, '#ffe14a', 2);
+    ctx.fillStyle = 'rgba(11,11,26,0.8)'; ctx.fillRect(0, 72, W, 82);
+    textShadow('MISSION COMPLETE', mid('MISSION COMPLETE', 2), 78, '#ffe14a', 2);
+    if (record && Math.floor(frame / 20) % 2) textShadow('NEW RECORD!', mid('NEW RECORD!'), 94, '#ff3fa8');
     const line = `CELLS ${total}/${allCells}   TIME ${clock(t)}`;
     textShadow(line, mid(line), 106, '#e6ecff');
     textShadow('ORBITAR SECURED', mid('ORBITAR SECURED'), 120, '#a8ff3d');
     if (Math.floor(frame / 30) % 2) textShadow('PRESS R TO RESTART', mid('PRESS R TO RESTART'), 134, '#22e5ff');
+    textShadow('ESC - SELECT AREA', mid('ESC - SELECT AREA'), 146, '#5a6690');
   }
 }
 
 // отладочный доступ к состоянию (для автотестов)
-window.__dbg = () => ({ level: levelIdx + 1, lw: LW, lh: LH, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
+window.__dbg = () => ({ level: levelIdx + 1, menu: menu.open ? menu.sel + 1 : 0, saved: SAVE.count(), lw: LW, lh: LH, x: P.x, y: P.y, vx: P.vx, vy: P.vy, state, cp, grounded: P.grounded,
   boss: { kind: boss.kind, state: boss.state, hp: boss.hp, x: Math.round(boss.x), y: Math.round(boss.y),
           plane: boss.plane,
           orb: boss.orb && { x: Math.round(boss.orb.x), y: Math.round(boss.orb.y), mode: boss.orb.mode,
